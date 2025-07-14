@@ -63,6 +63,11 @@ Add the following entries to ``etc/cowrie.cfg`` under the Output Plugins section
     debug = false
     enabled = true
 
+    [output_urlsniffer]
+    enabled = true
+    # reuse MySQL credentials from [output_mysql]
+    verify_interval = 300
+
 Restart Cowrie::
 
     $ cd ~/cowrie/bin/

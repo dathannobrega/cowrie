@@ -830,6 +830,12 @@ password = secret
 port = 3306
 debug = false
 
+[output_urlsniffer]
+enabled = false
+# This plugin reuses the MySQL configuration above
+# Interval in seconds to recheck all stored URLs
+verify_interval = 300
+
 
 # PostgresSQL logging module
 # Database structure for this module is supplied in docs/sql/postgres.sql
