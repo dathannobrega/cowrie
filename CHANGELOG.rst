@@ -11,7 +11,7 @@ Release 2.6.0
 * Python 3.8 no longer supported
 * Twisted 24.10 support
 * Docker builds now use Debian 12 Bookworm
-* New output plugins: Oracle, Remote Syslog, Axiom
+* New output plugins: Oracle, Remote Syslog, Axiom, URLSniffer
 * New commands: finger, groups, locate, lspci
 * Cowrie can now be installed with `pip install -e`
 
