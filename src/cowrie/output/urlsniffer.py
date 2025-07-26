@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import socket
+import base64
 from datetime import datetime
 from twisted.internet import task
 
@@ -75,7 +76,48 @@ class Output(cowrie.core.output.Output):
         for url in urls:
             self._insert_or_update(url)
 
+    def _decode_obfuscated(self, text: str) -> str:
+        """Return ``text`` with common obfuscation techniques reversed."""
+
+        # Base64 strings that decode to ascii and include http(s) references
+        for b64 in re.findall(r"(?<![A-Za-z0-9+/=])(?:[A-Za-z0-9+/]{16,}=*)", text):
+            try:
+                decoded = base64.b64decode(b64).decode("utf-8", "ignore")
+            except Exception:
+                continue
+            if "http" in decoded:
+                text += " " + decoded
+
+        # Hexadecimal sequences like \x68\x74\x74\x70
+        def _hex_replace(m: re.Match[str]) -> str:
+            try:
+                return bytes.fromhex(m.group(0).replace("\\x", "")).decode("utf-8", "ignore")
+            except Exception:
+                return m.group(0)
+
+        text = re.sub(r"(?:\\x[0-9a-fA-F]{2})+", _hex_replace, text)
+
+        # Octal sequences like \167\147\145\164
+        def _oct_replace(m: re.Match[str]) -> str:
+            try:
+                parts = re.findall(r"\\([0-7]{1,3})", m.group(0))
+                return "".join(chr(int(p, 8)) for p in parts)
+            except Exception:
+                return m.group(0)
+
+        text = re.sub(r"(?:\\[0-7]{1,3})+", _oct_replace, text)
+
+        # hxxp -> http and w{x}get -> wget style tricks
+        text = text.replace("hxxp://", "http://")
+        text = text.replace("w{x}get", "wget")
+
+        # remove ${VAR} placeholders
+        text = re.sub(r"\$\{[^}]+\}", "", text)
+
+        return text
+
     def _extract_urls(self, text: str) -> set[str]:
+        text = self._decode_obfuscated(text)
         pattern = r"https?://[^\s<>\"]+|www\.[^\s<>\"]+"
         return {u.rstrip(";") for u in re.findall(pattern, text)}
 
