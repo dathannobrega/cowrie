@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2025 Erik Belak
+# SPDX-FileCopyrightText: 2025 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 ---
 global:
   scrape_interval: 5s
@@ -14,7 +19,7 @@ scrape_configs:
         'cadvisor:8080'
       ]
     metric_relabel_configs:
-      - source_labels: [ cowrie ]
+      - source_labels: [cowrie]
         regex: '^cowrie$'
         action: keep
       - action: drop

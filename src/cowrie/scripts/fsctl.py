@@ -1,5 +1,10 @@
 #!/usr/bin/env python
 
+# SPDX-FileCopyrightText: 2013 Upi Tamminen <desaster@gmail.com>
+# SPDX-FileCopyrightText: 2015-2025 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 ################################################################
 # This is a command line interpreter used to edit
 # cowrie file system pickle files.
@@ -8,10 +13,10 @@
 # relative file references.
 #
 # Do not use to build a complete file system. Use:
-# /opt/cowrie/bin/createfs
+# `bin/createfs`
 #
-# Instead it should be used to edit existing file systems
-# such as the default: /opt/cowrie/data/fs.pickle.
+# Instead it can be used to edit existing file systems
+# such as the default: `src/cowrie/data/fs.pickle`.
 #
 # Donovan Hubbard
 # Douglas Hubbard
@@ -104,6 +109,37 @@ def resolve_reference(pwd, relativeReference):
     return absoluteReference
 
 
+def embed_directory(fs, local_root):
+    """
+    Walk local_root and embed each regular file's bytes into the matching
+    pickle entry's A_CONTENTS.
+
+    A file maps to the pickle entry at "/" + relpath(file, local_root). Files
+    with no matching entry, or whose matching entry is not a T_FILE, are
+    skipped.
+
+    Returns a (loaded_count, skipped_count, skipped_paths) tuple.
+    """
+    loaded = 0
+    skipped: list[str] = []
+    for dirpath, _dirs, files in os.walk(local_root):
+        for filename in files:
+            realfile = os.path.join(dirpath, filename)
+            virtual = "/" + os.path.relpath(realfile, local_root)
+            try:
+                entry = getpath(fs, virtual)
+            except FileNotFound:
+                skipped.append(virtual)
+                continue
+            if entry[A_TYPE] != T_FILE:
+                skipped.append(virtual)
+                continue
+            with open(realfile, "rb") as f:
+                entry[A_CONTENTS] = f.read()
+            loaded += 1
+    return loaded, len(skipped), skipped
+
+
 class fseditCmd(cmd.Cmd):
     def __init__(self, pickle_file_path):
         cmd.Cmd.__init__(self)
@@ -113,13 +149,11 @@ class fseditCmd(cmd.Cmd):
             sys.exit(1)
 
         try:
-            pickle_file = open(pickle_file_path, "rb")
+            with open(pickle_file_path, "rb") as pickle_file:
+                self.fs = pickle.load(pickle_file, encoding="utf-8")
         except OSError as e:
             print(f"Unable to open file {pickle_file_path}: {e!r}")
             sys.exit(1)
-
-        try:
-            self.fs = pickle.load(pickle_file, encoding="utf-8")
         except Exception:
             print(
                 (
@@ -139,18 +173,17 @@ class fseditCmd(cmd.Cmd):
         self.update_pwd("/")
 
         self.intro = (
-            "\nKippo/Cowrie file system interactive editor\n"
-            + "Donovan Hubbard, Douglas Hubbard, March 2013\n"
-            + "Type 'help' for help\n"
+            "\nCowrie file system interactive editor\n" + "Type 'help' for help\n"
         )
 
-    def save_pickle(self):
+    def save_pickle(self) -> None:
         """
         saves the current file system to the pickle
         :return:
         """
         try:
-            pickle.dump(self.fs, open(self.pickle_file_path, "wb"))
+            with open(self.pickle_file_path, "wb") as f:
+                pickle.dump(self.fs, f)
         except Exception as e:
             print(
                 (
@@ -167,6 +200,87 @@ class fseditCmd(cmd.Cmd):
         Exits the file system editor
         """
         return True
+
+    def do_embed(self, args):
+        """
+        Bulk-load file contents from a local directory tree into matching
+        pickle entries. Walks <local-dir> recursively and, for every regular
+        file, sets A_CONTENTS to its bytes on the entry at "/" + relpath.
+
+        Files with no matching pickle entry (or whose match is not a
+        T_FILE) are reported and skipped.
+
+        Usage: embed <local-dir>
+        """
+        arguments = args.split()
+        if len(arguments) != 1:
+            print("usage: embed <local-dir>")
+            return False
+
+        local_root = arguments[0]
+        if not os.path.isdir(local_root):
+            print(f"Not a directory: {local_root}")
+            return
+
+        loaded, skipped_count, skipped = embed_directory(self.fs, local_root)
+        for path in skipped:
+            print(f"  skip (no matching pickle entry): {path}")
+        print(f"Embedded {loaded} files, skipped {skipped_count}")
+        self.save_pickle()
+
+    def do_load(self, args):
+        """
+        Update A_CONTENTS on normal files
+        Two arguments, first the file in the pickle file system, and second the name of the file of which to copy
+        the contents
+        """
+        arguments = args.split()
+        print(f"do_load: {arguments}")
+        if len(arguments) != 2:
+            print("Usage: load <honeyfs file> <realfile>")
+            return False
+
+        path = resolve_reference(self.pwd, arguments[0])
+
+        try:
+            cwd = getpath(self.fs, path)
+        except FileNotFound:
+            print(f"Can't find file: {arguments[0]}")
+            return
+
+        try:
+            with open(arguments[1], "rb") as f:
+                cwd[A_CONTENTS] = f.read()
+        except OSError as e:
+            print(f"Unable to open file {arguments[1]}: {e!r}")
+            return
+
+        self.save_pickle()
+
+    def do_cat(self, args):
+        """
+        Cat file, one file only for now
+        """
+        arguments = args.split()
+        if len(arguments) != 1:
+            print("usage: cat <file>")
+            return False
+
+        path = resolve_reference(self.pwd, arguments[0])
+
+        try:
+            cwd = getpath(self.fs, path)
+        except FileNotFound:
+            print(f"cat: {arguments[0]}: No such file")
+            return
+
+        if cwd[A_TYPE] == T_FILE:
+            if not cwd[A_CONTENTS]:
+                print(f"No content in pickle file for {arguments[0]}")
+            else:
+                print(cwd[A_CONTENTS].decode())
+        else:
+            print("not a file")
 
     def do_EOF(self, args):
         """
@@ -759,17 +873,10 @@ class fseditCmd(cmd.Cmd):
 
 def run():
     if len(sys.argv) < 2 or len(sys.argv) > 3:
-        print(
-            "Usage: {} <fs.pickle> [command]".format(
-                os.path.basename(
-                    sys.argv[0],
-                )
-            )
-        )
+        print(f"Usage: {os.path.basename(sys.argv[0])} <fs.pickle> [command]")
         sys.exit(1)
 
     pickle_file_name = sys.argv[1].strip()
-    print(pickle_file_name)
 
     if len(sys.argv) == 3:
         fseditCmd(pickle_file_name).onecmd(sys.argv[2])

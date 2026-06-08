@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2015 Adam Ringwood <adam@nexadmin.com>
+# SPDX-FileCopyrightText: 2015-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Simple elasticsearch logger
 
 from __future__ import annotations
@@ -23,7 +28,7 @@ class Output(cowrie.core.output.Output):
         host = CowrieConfig.get("output_elasticsearch", "host")
         port = CowrieConfig.get("output_elasticsearch", "port")
         self.index = CowrieConfig.get("output_elasticsearch", "index")
-        self.type = CowrieConfig.get("output_elasticsearch", "type")
+        self.type = CowrieConfig.get("output_elasticsearch", "type", fallback="_doc")
         self.pipeline = CowrieConfig.get("output_elasticsearch", "pipeline")
         # new options (creds + https)
         username = CowrieConfig.get("output_elasticsearch", "username", fallback=None)
@@ -115,7 +120,7 @@ class Output(cowrie.core.output.Output):
         pass
 
     def write(self, event):
-        for i in list(event.keys()):
+        for i in list(event):
             # remove twisted 15 legacy keys
             if i.startswith("log_"):
                 del event[i]

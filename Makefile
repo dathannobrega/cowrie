@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2019-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 # This `Makefile` is intended for Cowrie developers.
 
 # Set default docker binary to docker in path if not specified.
@@ -53,16 +57,6 @@ pip-check: ## Verify python packages
 git-remote: ## Add remote git configuration
 	git remote add cowrie https://github.com/cowrie/cowrie
 
-.PHONY: pur
-pip-pur: ## Upgrade dependencies based on latest packages
-	git checkout master
-	-git branch -D "dependency-upgrade-`date -u +%Y-%m-%d`"
-	git checkout -b "dependency-upgrade-`date -u +%Y-%m-%d`"
-	pur -r requirements.txt
-	pur -r requirements-dev.txt
-	pur -r requirements-output.txt
-	git commit -m "dependency upgrade `date -u`" requirements*.txt
-# This Makefile is for developers and is not required to run Cowrie
 
 # The binary to build (just the basename).
 MODULE := cowrie
@@ -79,22 +73,28 @@ PLATFORM := linux/amd64,linux/arm64
 BUILD_DATE = $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 TAG=$(shell git rev-parse --short=8 HEAD)
 
+export SETUPTOOLS_SCM_PRETEND_VERSION_FOR_COWRIE := $(shell python -m setuptools_scm --force-write-version-files)
+
+
+.PHONY: build-fs-pickle
+build-fs-pickle: ## Rebuild src/cowrie/data/fs.pickle from a Debian container
+	DOCKER=$(DOCKER) bin/build-fs-pickle.sh
 
 .PHONY: docker-build
 docker-build: docker/Dockerfile ## Build Docker image
-	-$(DOCKER) buildx create --name cowrie-builder
+	-$(DOCKER) buildx create --append --name cowrie-builder
 	$(DOCKER) buildx use cowrie-builder
 	$(DOCKER) buildx build --sbom=true --provenance=true --platform ${PLATFORM} -t ${IMAGE}:${TAG} -t ${IMAGE}:latest --build-arg BUILD_DATE=${BUILD_DATE} -f docker/Dockerfile .
 
 .PHONY: docker-load
 docker-load: docker-build ## Load Docker image
-	-$(DOCKER) buildx create --name cowrie-builder
+	-$(DOCKER) buildx create --append --name cowrie-builder
 	$(DOCKER) buildx use cowrie-builder
 	$(DOCKER) buildx build --load -t ${IMAGE}:${TAG} -t ${IMAGE}:latest --build-arg BUILD_DATE=${BUILD_DATE} -f docker/Dockerfile .
 
 .PHONY: docker-build ## Push Docker image
 docker-push:  ## Push Docker image to Docker Hub
-	-$(DOCKER) buildx create --name cowrie-builder
+	-$(DOCKER) buildx create --append --name cowrie-builder
 	@echo "Pushing image to GitHub Docker Registry...\n"
 	$(DOCKER) buildx use cowrie-builder
 	$(DOCKER) buildx build --sbom=true --provenance=true --platform ${PLATFORM} -t ${IMAGE}:${TAG} -t ${IMAGE}:latest --build-arg BUILD_DATE=${BUILD_DATE} -f docker/Dockerfile --push .

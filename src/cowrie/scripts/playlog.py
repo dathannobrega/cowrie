@@ -1,7 +1,9 @@
 #!/usr/bin/env python
+
+# SPDX-FileCopyrightText: 2003-2011 Upi Tamminen <desaster@gmail.com>
+# SPDX-FileCopyrightText: 2016-2025 Michel Oosterhof <michel@oosterhof.net>
 #
-# Copyright (C) 2003-2011 Upi Tamminen <desaster@dragonlight.fi>
-#
+# SPDX-License-Identifier: BSD-3-Clause
 
 import getopt
 import os
@@ -40,7 +42,8 @@ def playlog(fd, settings):
 
         if str(tty) == str(currtty) and op == OP_WRITE:
             # the first stream seen is considered 'output'
-            if prefdir == 0:
+            # TYPE_INTERACT is for exec commands, don't use it to set prefdir
+            if prefdir == 0 and direction != TYPE_INTERACT:
                 prefdir = direction
                 # use the other direction
                 if settings["input_only"]:
@@ -51,7 +54,12 @@ def playlog(fd, settings):
                 color = b"\033[36m"
             elif direction == TYPE_INPUT:
                 color = b"\033[33m"
-            if direction == prefdir or settings["both_dirs"]:
+            # TYPE_INTERACT (exec command) is always shown
+            if (
+                direction == prefdir
+                or direction == TYPE_INTERACT
+                or settings["both_dirs"]
+            ):
                 curtime = float(sec) + float(usec) / 1000000
                 if prevtime != 0:
                     sleeptime = curtime - prevtime

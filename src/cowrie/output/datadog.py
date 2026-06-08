@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2022 udgover <frederic.baguelin@gmail.com>
+# SPDX-FileCopyrightText: 2022-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """
 Simple Datadog HTTP logger.
 """
@@ -6,8 +11,8 @@ from __future__ import annotations
 
 import json
 import platform
-
 from io import BytesIO
+
 from twisted.internet import reactor
 from twisted.python import log
 from twisted.web import client, http_headers
@@ -41,7 +46,7 @@ class Output(cowrie.core.output.Output):
         pass
 
     def write(self, event):
-        for i in list(event.keys()):
+        for i in list(event):
             # Remove twisted 15 legacy keys
             if i.startswith("log_"):
                 del event[i]

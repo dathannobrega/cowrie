@@ -1,39 +1,13 @@
-# Copyright (c) 2015 Michel Oosterhof <michel@oosterhof.net>
-# All rights reserved.
+# SPDX-FileCopyrightText: 2015-2026 Michel Oosterhof <michel@oosterhof.net>
 #
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions
-# are met:
-#
-# 1. Redistributions of source code must retain the above copyright
-#    notice, this list of conditions and the following disclaimer.
-# 2. Redistributions in binary form must reproduce the above copyright
-#    notice, this list of conditions and the following disclaimer in the
-#    documentation and/or other materials provided with the distribution.
-# 3. The names of the author(s) may not be used to endorse or promote
-#    products derived from this software without specific prior written
-#    permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE AUTHORS ``AS IS'' AND ANY EXPRESS OR
-# IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
-# OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-# IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY DIRECT, INDIRECT,
-# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
-# AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-# OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
-# SUCH DAMAGE.
+# SPDX-License-Identifier: BSD-3-Clause
 
 from __future__ import annotations
 
-from importlib import import_module
 import os
 import sys
-from typing import ClassVar, TYPE_CHECKING
-
-from zope.interface import implementer, provider
+from importlib import import_module
+from typing import TYPE_CHECKING, ClassVar
 
 from twisted._version import __version__ as __twisted_version__
 from twisted.application import service
@@ -43,14 +17,17 @@ from twisted.internet import reactor
 from twisted.logger import ILogObserver, globalLogPublisher
 from twisted.plugin import IPlugin
 from twisted.python import log, usage
+from zope.interface import implementer, provider
 
 import cowrie.core.checkers
-import cowrie.core.realm
+import cowrie.core.uuid
+import cowrie.llm.realm
+import cowrie.shell.realm
 import cowrie.ssh.factory
 import cowrie.telnet.factory
 from backend_pool.pool_server import PoolServerFactory
+from cowrie import __version__ as __cowrie_version__
 from cowrie import core
-from cowrie._version import __version__ as __cowrie_version__
 from cowrie.core.config import CowrieConfig
 from cowrie.core.utils import create_endpoint_services, get_endpoints_from_section
 from cowrie.pool_interface.handler import PoolHandler
@@ -108,6 +85,9 @@ class CowrieServiceMaker:
             "backend_pool", "pool_only", fallback=False
         )
 
+        self.uuid = core.uuid.get_uuid()
+        CowrieConfig.set("honeypot", "uuid", str(self.uuid))
+
     def makeService(self, options: dict) -> service.Service:
         """
         Construct a TCPServer from a factory defined in Cowrie.
@@ -133,13 +113,12 @@ Makes a Cowrie SSH/Telnet honeypot.
         if tz != "system":
             os.environ["TZ"] = tz
 
-        log.msg("Python Version {}".format(str(sys.version).replace("\n", "")))
+        log.msg(f"Python Version {str(sys.version).replace(chr(10), '')}")
         log.msg(
             f"Twisted Version {__twisted_version__.major}.{__twisted_version__.minor}.{__twisted_version__.micro}"
         )
-        log.msg(
-            f"Cowrie Version {__cowrie_version__.major}.{__cowrie_version__.minor}.{__cowrie_version__.micro}"
-        )
+        log.msg(f"Cowrie Version {__cowrie_version__.__version__}")
+        log.msg(f"Sensor UUID: {self.uuid}")
 
         # check configurations
         if not self.enableTelnet and not self.enableSSH and not self.pool_only:
@@ -223,7 +202,14 @@ Makes a Cowrie SSH/Telnet honeypot.
         if self.enableSSH:
             factory = cowrie.ssh.factory.CowrieSSHFactory(backend, self.pool_handler)
             factory.tac = self  # type: ignore
-            factory.portal = portal.Portal(core.realm.HoneyPotRealm())
+
+            if backend in ("shell", "proxy"):
+                factory.portal = portal.Portal(cowrie.shell.realm.HoneyPotRealm())
+            elif backend == "llm":
+                factory.portal = portal.Portal(cowrie.llm.realm.HoneyPotRealm())
+            else:
+                raise ValueError(backend)
+
             factory.portal.registerChecker(core.checkers.HoneypotPublicKeyChecker())
             factory.portal.registerChecker(core.checkers.HoneypotPasswordChecker())
 
@@ -244,7 +230,13 @@ Makes a Cowrie SSH/Telnet honeypot.
         if self.enableTelnet:
             f = cowrie.telnet.factory.HoneyPotTelnetFactory(backend, self.pool_handler)
             f.tac = self
-            f.portal = portal.Portal(core.realm.HoneyPotRealm())
+            if backend in ("shell", "proxy"):
+                f.portal = portal.Portal(cowrie.shell.realm.HoneyPotRealm())
+            elif backend == "llm":
+                f.portal = portal.Portal(cowrie.llm.realm.HoneyPotRealm())
+            else:
+                raise ValueError(backend)
+
             f.portal.registerChecker(core.checkers.HoneypotPasswordChecker())
 
             listen_endpoints = get_endpoints_from_section(CowrieConfig, "telnet", 2223)

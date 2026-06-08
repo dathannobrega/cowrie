@@ -1,5 +1,7 @@
-# Copyright (c) 2009-2014 Upi Tamminen <desaster@gmail.com>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2009-2014 Upi Tamminen <desaster@gmail.com>
+# SPDX-FileCopyrightText: 2015-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 """
 This module contains ...
@@ -9,8 +11,6 @@ from __future__ import annotations
 
 from sys import modules
 
-from zope.interface import implementer
-
 from twisted.conch import error
 from twisted.conch.ssh import keys
 from twisted.cred.checkers import ICredentialsChecker
@@ -18,10 +18,11 @@ from twisted.cred.credentials import ISSHPrivateKey
 from twisted.cred.error import UnauthorizedLogin, UnhandledCredentials
 from twisted.internet import defer
 from twisted.python import failure, log
+from zope.interface import implementer
 
+import cowrie.core.auth  # noqa: F401
 from cowrie.core import credentials as conchcredentials
 from cowrie.core.config import CowrieConfig
-import cowrie.core.auth  # noqa: F401
 
 
 @implementer(ICredentialsChecker)

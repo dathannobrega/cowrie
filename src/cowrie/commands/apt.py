@@ -1,12 +1,14 @@
-# Copyright (c) 2009 Upi Tamminen <desaster@gmail.com>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2009-2010 Upi Tamminen <desaster@gmail.com>
+# SPDX-FileCopyrightText: 2015-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 
 from __future__ import annotations
 
 import random
 import re
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from twisted.internet import defer, reactor
 from twisted.internet.defer import inlineCallbacks
@@ -38,24 +40,25 @@ class Command_aptget(HoneyPotCommand):
 
     packages: dict[str, dict[str, Any]]
 
-    def start(self) -> None:
+    @inlineCallbacks
+    def start(self):
+        self.packages = {}
         if len(self.args) == 0:
             self.do_help()
-        elif len(self.args) > 0 and self.args[0] == "-v":
+        elif self.args[0] == "-v":
             self.do_version()
-        elif len(self.args) > 0 and self.args[0] == "install":
-            self.do_install()
-        elif len(self.args) > 0 and self.args[0] == "moo":
+        elif self.args[0] == "install":
+            yield self.do_install()
+        elif self.args[0] == "moo":
             self.do_moo()
         else:
             self.do_locked()
-        self.packages = {}
 
     def sleep(self, time: float, time2: float | None = None) -> defer.Deferred:
         d: defer.Deferred = defer.Deferred()
         if time2:
             time = random.randint(int(time * 100), int(time2 * 100.0)) / 100.0
-        reactor.callLater(time, d.callback, None)  # type: ignore[attr-defined]
+        reactor.callLater(time, d.callback, None)
         return d
 
     def do_version(self) -> None:
@@ -126,8 +129,9 @@ pages for more information and options.
     @inlineCallbacks
     def do_install(self, *args):
         if len(self.args) <= 1:
-            msg = "0 upgraded, 0 newly installed, 0 to remove and {0} not upgraded.\n"
-            self.write(msg.format(random.randint(200, 300)))
+            self.write(
+                f"0 upgraded, 0 newly installed, 0 to remove and {random.randint(200, 300)} not upgraded.\n"
+            )
             self.exit()
             return
 
@@ -142,7 +146,7 @@ pages for more information and options.
         self.write("Building dependency tree\n")
         self.write("Reading state information... Done\n")
         self.write("The following NEW packages will be installed:\n")
-        self.write("  {} ".format(" ".join(self.packages)) + "\n")
+        self.write(f"  {' '.join(self.packages)} \n")
         self.write(
             f"0 upgraded, {len(self.packages)} newly installed, 0 to remove and 259 not upgraded.\n"
         )
@@ -153,9 +157,7 @@ pages for more information and options.
         i = 1
         for p in self.packages:
             self.write(
-                "Get:{} http://ftp.debian.org stable/main {} {} [{}.2kB]\n".format(
-                    i, p, self.packages[p]["version"], self.packages[p]["size"]
-                )
+                f"Get:{i} http://ftp.debian.org stable/main {p} {self.packages[p]['version']} [{self.packages[p]['size']}.2kB]\n"
             )
             i += 1
             yield self.sleep(1, 2)
@@ -169,17 +171,13 @@ pages for more information and options.
         yield self.sleep(1, 2)
         for p in self.packages:
             self.write(
-                "Unpacking {} (from .../archives/{}_{}_i386.deb) ...\n".format(
-                    p, p, self.packages[p]["version"]
-                )
+                f"Unpacking {p} (from .../archives/{p}_{self.packages[p]['version']}_i386.deb) ...\n"
             )
             yield self.sleep(1, 2)
         self.write("Processing triggers for man-db ...\n")
         yield self.sleep(2)
         for p in self.packages:
-            self.write(
-                "Setting up {} ({}) ...\n".format(p, self.packages[p]["version"])
-            )
+            self.write(f"Setting up {p} ({self.packages[p]['version']}) ...\n")
             self.fs.mkfile(
                 f"/usr/bin/{p}",
                 self.protocol.user.uid,

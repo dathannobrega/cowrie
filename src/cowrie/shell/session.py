@@ -1,13 +1,14 @@
-# Copyright (c) 2009-2014 Upi Tamminen <desaster@gmail.com>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2009-2014 Upi Tamminen <desaster@gmail.com>
+# SPDX-FileCopyrightText: 2015-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 from __future__ import annotations
-
-from zope.interface import implementer
 
 from twisted.conch.interfaces import ISession
 from twisted.conch.ssh import session
 from twisted.python import log
+from zope.interface import implementer
 
 from cowrie.insults import insults
 from cowrie.shell import protocol

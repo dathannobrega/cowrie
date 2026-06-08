@@ -1,3 +1,7 @@
+.. SPDX-FileCopyrightText: 2021-2025 Michel Oosterhof <michel@oosterhof.net>
+..
+.. SPDX-License-Identifier: BSD-3-Clause
+
 Output Event Code Reference
 ###########################
 
@@ -52,7 +56,7 @@ Attributes:
     * password
 
 cowrie.client.size
-===================
+==================
 
 Width and height of the users terminal as communicated through the SSH protocol.
 
@@ -64,11 +68,22 @@ Attributes:
 cowrie.session.file_upload
 ==========================
 
-File uploaded to Cowrie, generaly through SFTP or SCP or another way.
+File uploaded to Cowrie, generally through SFTP or SCP or another way.
 
 Attributes:
 
     * filename
+    * outfile
+    * shasum
+
+cowrie.session.file_download
+============================
+
+File downloaded to Cowrie
+
+Attributes:
+
+    * url
     * outfile
     * shasum
 
@@ -81,6 +96,14 @@ Attributes:
 
     * input
 
+cowrie.command.failed
+=====================
+
+Command line input failed
+
+Attributes:
+
+    * input
 
 cowrie.virustotal.scanfile
 ==========================
@@ -95,7 +118,7 @@ Attributes:
     * total
 
 cowrie.session.connect
-==========================
+======================
 
 New connection
 
@@ -115,9 +138,8 @@ Attributes:
 
     * version
 
-
 cowrie.client.kex
-=====================
+=================
 
 SSH Key Exchange Attributes
 
@@ -137,8 +159,17 @@ Attributes:
 
     * duration
 
-cowrie.log.closed
+cowrie.session.params
 =====================
+
+Session parameters
+
+Attributes:
+
+    * arch
+
+cowrie.log.closed
+=================
 
 TTY Log closed
 
@@ -163,7 +194,7 @@ Attributes:
     * src_port
 
 cowrie.direct-tcpip.data
-===========================
+========================
 
 Data attempted to be sent through direct-tcpip forwarding
 

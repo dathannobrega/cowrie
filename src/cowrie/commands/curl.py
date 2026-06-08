@@ -1,26 +1,35 @@
-# Copyright (c) 2022 Michel Oosterhof <michel@oosterhof.net>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2009-2014 Upi Tamminen <desaster@gmail.com>
+# SPDX-FileCopyrightText: 2014-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 from __future__ import annotations
-from http.client import responses
 
 import getopt
 import os
+from http.client import responses
 from urllib import parse
 
+import treq
 from twisted.internet import error
 from twisted.internet.defer import inlineCallbacks
 from twisted.python import log
 
-import treq
-
 from cowrie.core.artifact import Artifact
-from cowrie.core.network import communication_allowed
 from cowrie.core.config import CowrieConfig
+from cowrie.core.network import communication_allowed
+from cowrie.core.rate_limiter import RateLimiter
 from cowrie.shell.command import HoneyPotCommand
 
-
 commands = {}
+
+# Initialize rate limiter
+curl_rate_limiter = RateLimiter(
+    enabled=CowrieConfig.getboolean("honeypot", "curl_rate_limit_enabled", fallback=True),
+    max_requests=CowrieConfig.getint("honeypot", "curl_rate_limit_requests", fallback=5),
+    window_seconds=CowrieConfig.getint("honeypot", "curl_rate_limit_window", fallback=60),
+    max_keys=CowrieConfig.getint("honeypot", "curl_rate_limit_max_hosts", fallback=1000)
+)
 
 CURL_HELP = """Usage: curl [options...] <url>
 Options: (H) means HTTP/HTTPS only, (F) means FTP only
@@ -201,12 +210,12 @@ class Command_curl(HoneyPotCommand):
     def start(self):
         try:
             optlist, args = getopt.getopt(
-                self.args, "sho:OI", ["help", "manual", "silent", "head"]
+                self.args, "Lsho:IO", ["help", "manual", "silent", "head"]
             )
         except getopt.GetoptError as err:
             # TODO: should be 'unknown' instead of 'not recognized'
-            self.write(f"curl: {err}\n")
-            self.write(
+            self.errorWrite(f"curl: {err}\n")
+            self.errorWrite(
                 "curl: try 'curl --help' or 'curl --manual' for more information\n"
             )
             self.exit()
@@ -214,7 +223,7 @@ class Command_curl(HoneyPotCommand):
 
         for opt in optlist:
             if opt[0] == "-h" or opt[0] == "--help":
-                self.write(CURL_HELP)
+                self.errorWrite(CURL_HELP)
                 self.exit()
                 return
             elif opt[0] == "-s" or opt[0] == "--silent":
@@ -226,7 +235,7 @@ class Command_curl(HoneyPotCommand):
             if args[0] is not None:
                 url = str(args[0]).strip()
         else:
-            self.write(
+            self.errorWrite(
                 "curl: try 'curl --help' or 'curl --manual' for more information\n"
             )
             self.exit()
@@ -246,7 +255,7 @@ class Command_curl(HoneyPotCommand):
                     or not len(self.outfile.strip())
                     or not urldata.path.count("/")
                 ):
-                    self.write("curl: Remote file name has no length!\n")
+                    self.errorWrite("curl: Remote file name has no length!\n")
                     self.exit()
                     return
 
@@ -255,7 +264,7 @@ class Command_curl(HoneyPotCommand):
             if self.outfile:
                 path = os.path.dirname(self.outfile)
             if not path or not self.fs.exists(path) or not self.fs.isdir(path):
-                self.write(
+                self.errorWrite(
                     f"curl: {self.outfile}: Cannot open: No such file or directory\n"
                 )
                 self.exit()
@@ -280,6 +289,17 @@ class Command_curl(HoneyPotCommand):
             )
             self.exit()
         self.port = parsed.port or (443 if scheme == "https" else 80)
+
+        # Check rate limit before proceeding
+        if not curl_rate_limiter.check(self.host):
+            log.msg(f"curl: rate limit exceeded for host: {self.host}. Simulating connection timeout")
+
+            # Simulate connection timeout
+            self.errorWrite(
+                f"curl: (7) Failed to connect to {self.host} port {self.port}: Operation timed out\n"
+            )
+            self.exit()
+            return
 
         allowed = yield communication_allowed(self.host)
         if not allowed:
@@ -306,9 +326,13 @@ class Command_curl(HoneyPotCommand):
         # if CowrieConfig.has_option("honeypot", "out_addr"):
         #     out_addr = (CowrieConfig.get("honeypot", "out_addr"), 0)
         if self.head_request:
-            deferred = treq.head(url=url, allow_redirects=False, headers=headers, timeout=10)
+            deferred = treq.head(
+                url=url, allow_redirects=False, headers=headers, timeout=10
+            )
         else:
-            deferred = treq.get(url=url, allow_redirects=False, headers=headers, timeout=10)
+            deferred = treq.get(
+                url=url, allow_redirects=False, headers=headers, timeout=10
+            )
         return deferred
 
     def handle_CTRL_C(self) -> None:
@@ -328,7 +352,9 @@ class Command_curl(HoneyPotCommand):
             for key, values in response.headers.getAllRawHeaders():
                 decoded_key = key.decode() if isinstance(key, bytes) else key
                 for value in values:
-                    decoded_value = value.decode() if isinstance(value, bytes) else value
+                    decoded_value = (
+                        value.decode() if isinstance(value, bytes) else value
+                    )
                     self.write(f"{decoded_key}: {decoded_value}\n")
             self.exit()
             return
@@ -429,19 +455,19 @@ class Command_curl(HoneyPotCommand):
         )
 
         if response.check(error.DNSLookupError) is not None:
-            self.write(f"curl: (6) Could not resolve host: {self.host}\n")
+            self.errorWrite(f"curl: (6) Could not resolve host: {self.host}\n")
             self.exit()
             return
 
         elif response.check(error.ConnectingCancelledError) is not None:
-            self.write(
+            self.errorWrite(
                 f"curl: (7) Failed to connect to {self.host} port {self.port}: Operation timed out\n"
             )
             self.exit()
             return
 
         elif response.check(error.ConnectionRefusedError) is not None:
-            self.write(
+            self.errorWrite(
                 f"curl: (7) Failed to connect to {self.host} port {self.port}: Connection refused\n"
             )
             self.exit()

@@ -1,18 +1,21 @@
+# SPDX-FileCopyrightText: 2016-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
 
 import configparser
 import unittest
 from io import StringIO
 
+from twisted.application.service import MultiService
+from twisted.internet import protocol, reactor
+
 from cowrie.core.utils import (
     create_endpoint_services,
     durationHuman,
     get_endpoints_from_section,
 )
-
-from twisted.application.service import MultiService
-from twisted.internet import protocol
-from twisted.internet import reactor
 
 
 def get_config(config_string: str) -> configparser.ConfigParser:
@@ -36,25 +39,23 @@ class UtilsTestCase(unittest.TestCase):
         self.assertEqual(something, "4.0 days 05:07:00")
 
     def test_get_endpoints_from_section(self) -> None:
-        cfg = get_config("[ssh]\n" "listen_addr = 1.1.1.1\n")
+        cfg = get_config("[ssh]\nlisten_addr = 1.1.1.1\n")
         self.assertEqual(
             ["tcp:2223:interface=1.1.1.1"], get_endpoints_from_section(cfg, "ssh", 2223)
         )
 
-        cfg = get_config("[ssh]\n" "listen_addr = 1.1.1.1\n")
+        cfg = get_config("[ssh]\nlisten_addr = 1.1.1.1\n")
         self.assertEqual(
             ["tcp:2224:interface=1.1.1.1"], get_endpoints_from_section(cfg, "ssh", 2224)
         )
 
-        cfg = get_config("[ssh]\n" "listen_addr = 1.1.1.1 2.2.2.2\n")
+        cfg = get_config("[ssh]\nlisten_addr = 1.1.1.1 2.2.2.2\n")
         self.assertEqual(
             ["tcp:2223:interface=1.1.1.1", "tcp:2223:interface=2.2.2.2"],
             get_endpoints_from_section(cfg, "ssh", 2223),
         )
 
-        cfg = get_config(
-            "[ssh]\n" "listen_addr = 1.1.1.1 2.2.2.2\n" "listen_port = 23\n"
-        )
+        cfg = get_config("[ssh]\nlisten_addr = 1.1.1.1 2.2.2.2\nlisten_port = 23\n")
         self.assertEqual(
             ["tcp:23:interface=1.1.1.1", "tcp:23:interface=2.2.2.2"],
             get_endpoints_from_section(cfg, "ssh", 2223),
@@ -67,6 +68,24 @@ class UtilsTestCase(unittest.TestCase):
         self.assertEqual(
             ["tcp:23:interface=1.1.1.1", "tcp:2323:interface=1.1.1.1"],
             get_endpoints_from_section(cfg, "ssh", 2223),
+        )
+
+    def test_get_endpoints_from_section_ipv6(self) -> None:
+        cfg = get_config("[ssh]\nlisten_addr = ::\n")
+        self.assertEqual(
+            [r"tcp6:2222:interface=\:\:"], get_endpoints_from_section(cfg, "ssh", 2222)
+        )
+
+        cfg = get_config("[ssh]\nlisten_addr = 2001:db8::1\n")
+        self.assertEqual(
+            [r"tcp6:2222:interface=2001\:db8\:\:1"],
+            get_endpoints_from_section(cfg, "ssh", 2222),
+        )
+
+        cfg = get_config("[ssh]\nlisten_addr = 0.0.0.0 ::\n")
+        self.assertEqual(
+            [r"tcp:2222:interface=0.0.0.0", r"tcp6:2222:interface=\:\:"],
+            get_endpoints_from_section(cfg, "ssh", 2222),
         )
 
     def test_create_endpoint_services(self) -> None:

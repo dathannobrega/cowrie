@@ -1,4 +1,10 @@
+# SPDX-FileCopyrightText: 2016 Dmitry Merkurev <didika914@gmail.com>
+# SPDX-FileCopyrightText: 2017-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
+
 import time
 from datetime import datetime
 
@@ -36,7 +42,7 @@ class Output(cowrie.core.output.Output):
         self.connection.close()
 
     def write(self, event):
-        for i in list(event.keys()):
+        for i in list(event):
             # remove twisted 15 legacy keys
             if i.startswith("log_"):
                 del event[i]

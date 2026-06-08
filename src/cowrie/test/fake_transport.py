@@ -1,10 +1,11 @@
-# Copyright (c) 2016 Dave Germiquet
-# See LICENSE for details.
+# SPDX-FileCopyrightText: 2016 Dave Germiquet
+# SPDX-FileCopyrightText: 2016-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 from __future__ import annotations
 
-from typing import ClassVar, TYPE_CHECKING
-
+from typing import TYPE_CHECKING, ClassVar
 
 from twisted.conch.insults import insults
 from twisted.test import proto_helpers

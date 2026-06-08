@@ -1,5 +1,7 @@
-# Copyright (c) 2009-2014 Upi Tamminen <desaster@gmail.com>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2009-2014 Upi Tamminen <desaster@gmail.com>
+# SPDX-FileCopyrightText: 2016-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 """
 This module contains ...
@@ -7,8 +9,9 @@ This module contains ...
 
 from __future__ import annotations
 
-from configparser import NoOptionError, NoSectionError
 import time
+from configparser import NoOptionError, NoSectionError
+from typing import TYPE_CHECKING
 
 from twisted.conch.openssh_compat import primes
 from twisted.conch.ssh import factory, keys, transport
@@ -21,7 +24,6 @@ from cowrie.ssh import transport as shellTransport
 from cowrie.ssh.userauth import HoneyPotSSHUserAuthServer
 from cowrie.ssh_proxy import server_transport as proxyTransport
 from cowrie.ssh_proxy.userauth import ProxySSHAuthServer
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from twisted.cred import portal as tp
@@ -83,10 +85,6 @@ class CowrieSSHFactory(factory.SSHFactory):
                 rsaPubKeyString, rsaPrivKeyString = cowriekeys.getRSAKeys()
                 self.publicKeys[key] = keys.Key.fromString(data=rsaPubKeyString)
                 self.privateKeys[key] = keys.Key.fromString(data=rsaPrivKeyString)
-            elif key == b"ssh-dss":
-                dsaaPubKeyString, dsaPrivKeyString = cowriekeys.getDSAKeys()
-                self.publicKeys[key] = keys.Key.fromString(data=dsaaPubKeyString)
-                self.privateKeys[key] = keys.Key.fromString(data=dsaPrivKeyString)
             elif key == b"ecdsa-sha2-nistp256":
                 ecdsaPuKeyString, ecdsaPrivKeyString = cowriekeys.getECDSAKeys()
                 self.publicKeys[key] = keys.Key.fromString(data=ecdsaPuKeyString)

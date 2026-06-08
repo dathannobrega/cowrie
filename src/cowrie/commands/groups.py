@@ -1,5 +1,13 @@
+# SPDX-FileCopyrightText: 2023 Masood Mansoori <masood.mansoori@gmail.com>
+# SPDX-FileCopyrightText: 2018 Free Software Foundation, Inc.
+# SPDX-FileCopyrightText: 2023-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
+
 import getopt
+
 from cowrie.shell.command import HoneyPotCommand
 
 commands = {}

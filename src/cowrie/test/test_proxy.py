@@ -1,19 +1,21 @@
 # -*- test-case-name: Cowrie Proxy Test Cases -*-
 
-# Copyright (c) 2019 Guilherme Borges
-# See LICENSE for details.
+# SPDX-FileCopyrightText: 2019 Guilherme Borges
+# SPDX-FileCopyrightText: 2020-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 from __future__ import annotations
 
 import os
 import unittest
 
-from cowrie.core.checkers import HoneypotPasswordChecker, HoneypotPublicKeyChecker
-from cowrie.core.realm import HoneyPotRealm
-from cowrie.ssh.factory import CowrieSSHFactory
-
 from twisted.cred import portal
 from twisted.internet import reactor
+
+from cowrie.core.checkers import HoneypotPasswordChecker, HoneypotPublicKeyChecker
+from cowrie.shell.realm import HoneyPotRealm
+from cowrie.ssh.factory import CowrieSSHFactory
 
 # from cowrie.test.proxy_compare import ProxyTestCommand
 

@@ -1,5 +1,7 @@
-# Copyright (c) 2010 Upi Tamminen <desaster@gmail.com>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2009-2011 Upi Tamminen <desaster@gmail.com>
+# SPDX-FileCopyrightText: 2015-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 
 """
@@ -12,12 +14,12 @@ import copy
 import getopt
 import os.path
 import re
+from typing import TYPE_CHECKING
 
 from twisted.python import log
 
 from cowrie.shell import fs
 from cowrie.shell.command import HoneyPotCommand
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -69,7 +71,17 @@ class Command_grep(HoneyPotCommand):
         else:
             try:
                 optlist, args = getopt.getopt(
-                    self.args, "abcDEFGHhIiJLlmnOoPqRSsUVvwxZA:B:C:e:f:"
+                    self.args,
+                    "abcDEFGHhIiJLlmnOoPqRSsUVvwxZA:B:C:e:f:",
+                    [
+                        "binary-files=",
+                        "color=",
+                        "color",
+                        "context=",
+                        "directories=",
+                        "label",
+                        "line-buffered",
+                    ],
                 )
             except getopt.GetoptError as err:
                 self.errorWrite(f"grep: invalid option -- {err.opt}\n")
@@ -487,7 +499,7 @@ class Command_mv(HoneyPotCommand):
             return
 
         try:
-            optlist, args = getopt.gnu_getopt(self.args, "-bfiStTuv")
+            _optlist, args = getopt.gnu_getopt(self.args, "-bfiStTuv")
         except getopt.GetoptError:
             self.errorWrite("Unrecognized option\n")
             return

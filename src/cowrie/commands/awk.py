@@ -1,6 +1,6 @@
-# Copyright (c) 2010 Michel Oosterhof <michel@oosterhof.net>
-# See the COPYRIGHT file for more information
-# Contributor: Fosocles
+# SPDX-FileCopyrightText: 2020-2025 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 """
 awk command
@@ -138,10 +138,9 @@ class Command_awk(HoneyPotCommand):
                         # remove `print` at the start
                         line = re.sub(r"^\s*print\s+", "", line)
                         # remove whitespace at the end
-                        line = re.sub(r"[;\s]*$", "", line)
+                        line = line.strip()
                         # replace whitespace and comma by single space
                         line = re.sub(r"(,|\s+)", " ", line)
-                        # print("LINE2: {}".format(line))
                         self.awk_print(line)
 
     def lineReceived(self, line: str) -> None:

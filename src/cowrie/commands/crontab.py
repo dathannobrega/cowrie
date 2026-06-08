@@ -1,6 +1,8 @@
-# Copyright (c) 2019 Nuno Novais <nuno@noais.me>
-# All rights reserved.
-# All rights given to Cowrie project
+# SPDX-FileCopyrightText: 2019 NunoNovais <nuno@novais.me>
+# SPDX-FileCopyrightText: 2019 Nuno Novais <nuno@noais.me>
+# SPDX-FileCopyrightText: 2020-2025 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 """
 This module contains the crontab commnad
@@ -33,7 +35,7 @@ class Command_crontab(HoneyPotCommand):
 
     def start(self) -> None:
         try:
-            opts, args = getopt.getopt(self.args, "u:elri")
+            opts, _args = getopt.getopt(self.args, "u:elri")
         except getopt.GetoptError as err:
             self.write(f"crontab: invalid option -- '{err.opt}'\n")
             self.write("crontab: usage error: unrecognized option\n")

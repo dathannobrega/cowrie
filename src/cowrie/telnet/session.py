@@ -1,4 +1,8 @@
-# Copyright (C) 2015, 2016 GoSecure Inc.
+# SPDX-FileCopyrightText: 2016 Olivier Bilodeau <obilodeau@gosecure.ca>
+# SPDX-FileCopyrightText: 2015, 2016 GoSecure Inc.
+# SPDX-FileCopyrightText: 2016-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 """
 Telnet User Session management for the Honeypot
 
@@ -9,13 +13,12 @@ from __future__ import annotations
 
 import traceback
 
-from zope.interface import implementer
-
 from twisted.conch.ssh import session
 from twisted.conch.telnet import ECHO, SGA, TelnetBootstrapProtocol
 from twisted.internet import interfaces, protocol
 from twisted.internet.protocol import connectionDone
 from twisted.python import failure, log
+from zope.interface import implementer
 
 from cowrie.insults import insults
 from cowrie.shell import protocol as cproto

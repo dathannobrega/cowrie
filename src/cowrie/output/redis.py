@@ -1,4 +1,10 @@
+# SPDX-FileCopyrightText: 2018 Sami Mokaddem <mokaddem.sami@gmail.com>
+# SPDX-FileCopyrightText: 2018-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
+
 import json
 from configparser import NoOptionError
 
@@ -55,7 +61,7 @@ class Output(cowrie.core.output.Output):
         Push to redis
         """
         # Add the entry to redis
-        for i in list(event.keys()):
+        for i in list(event):
             # Remove twisted 15 legacy keys
             if i.startswith("log_"):
                 del event[i]

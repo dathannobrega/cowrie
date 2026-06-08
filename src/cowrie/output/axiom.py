@@ -1,16 +1,18 @@
+# SPDX-FileCopyrightText: 2024-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Simple Telegram Bot logger
 
 import json
 
+import treq
 from twisted.internet import defer
 from twisted.python import log
 from twisted.web import http_headers
 
-import treq
-
 import cowrie.core.output
 from cowrie.core.config import CowrieConfig
-
 
 AXIOM_URL = "https://api.axiom.co/v1"
 
@@ -37,7 +39,7 @@ class Output(cowrie.core.output.Output):
     @defer.inlineCallbacks
     def write(self, event):
         event["_time"] = event.pop("timestamp")
-        for i in list(event.keys()):
+        for i in list(event):
             # Remove twisted 15 legacy keys
             if i.startswith("log_") or i == "time" or i == "system":
                 del event[i]
@@ -51,6 +53,7 @@ class Output(cowrie.core.output.Output):
             self.url,
             data=b"[" + msg + b"]",
             headers=self.headers,
+            allow_redirects=False,
         )
 
         if resp.code != 200:

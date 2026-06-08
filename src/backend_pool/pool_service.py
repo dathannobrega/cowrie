@@ -15,26 +15,24 @@ concurrent requests. The lock protects the _guests_ list, which
 contains references for each VM backend (in our case libvirt/QEMU
 instances)."""
 
-# Copyright (c) 2019 Guilherme Borges <guilhermerosasborges@gmail.com>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2019 Guilherme Borges <guilhermerosasborges@gmail.com>
+# SPDX-FileCopyrightText: 2021-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
 import time
+from dataclasses import dataclass
 from threading import Lock
-from typing import Optional
 
-from twisted.internet import reactor
-from twisted.internet import threads
+from twisted.internet import reactor, threads
 from twisted.python import log
-
-from cowrie.core.config import CowrieConfig
 
 import backend_pool.libvirt.backend_service
 import backend_pool.util
-
+from cowrie.core.config import CowrieConfig
 
 POOL_STATE_CREATED = "created"
 POOL_STATE_AVAILABLE = "available"
@@ -125,8 +123,7 @@ class PoolService:
             "backend_pool", "use_nat", fallback=True
         )
 
-        # detect invalid config
-        if not self.ssh_port > 0 and not self.telnet_port > 0:
+        if self.ssh_port == -1 and self.telnet_port == -1:
             log.msg(
                 eventid="cowrie.backend_pool.service",
                 format="Invalid configuration: one of SSH or Telnet ports must be defined!",
@@ -156,7 +153,7 @@ class PoolService:
             "backend_pool", "recycle_period", fallback=-1
         )
         if recycle_period > 0:
-            reactor.callLater(recycle_period, self.restart_pool)  # type: ignore[attr-defined]
+            reactor.callLater(recycle_period, self.restart_pool)
 
     def stop_pool(self) -> None:
         # lazy import to avoid exception if not using the backend_pool
@@ -351,7 +348,11 @@ class PoolService:
         # replenish pool until full
         to_create = self.max_vm - self.existing_pool_size()
         for _ in range(to_create):
-            dom, snap, guest_ip = self.qemu.create_guest(self.is_ip_free)
+            created = self.qemu.create_guest(self.is_ip_free)
+            if created is None:
+                # backend not ready or libvirt failed; try again next loop
+                continue
+            dom, snap, guest_ip = created
 
             # create guest object
             self.guests.append(
@@ -398,12 +399,12 @@ class PoolService:
         self.__producer_mark_available()
 
         # sleep until next iteration
-        self.loop_next_call = reactor.callLater(  # type: ignore[attr-defined]
+        self.loop_next_call = reactor.callLater(
             self.loop_sleep_time, self.producer_loop
         )
 
     # Consumers
-    def __consumers_get_guest_ip(self, src_ip: str) -> Optional[Guest]:
+    def __consumers_get_guest_ip(self, src_ip: str) -> Guest | None:
         with self.guest_lock:
             # if ip is the same, doesn't matter if being used or not
             usable_guests = self.get_guest_states([POOL_STATE_USED, POOL_STATE_USING])
@@ -412,14 +413,14 @@ class PoolService:
                     return guest
         return None
 
-    def __consumers_get_available_guest(self) -> Optional[Guest]:
+    def __consumers_get_available_guest(self) -> Guest | None:
         with self.guest_lock:
             available_guests = self.get_guest_states([POOL_STATE_AVAILABLE])
             for guest in available_guests:
                 return guest
         return None
 
-    def __consumers_get_any_guest(self) -> Optional[Guest]:
+    def __consumers_get_any_guest(self) -> Guest | None:
         """
         try to get a VM with few clients
         """

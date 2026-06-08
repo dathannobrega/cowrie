@@ -1,4 +1,8 @@
-# Copyright (C) 2015, 2016 GoSecure Inc.
+# SPDX-FileCopyrightText: 2019 Guilherme Borges <guilhermerosasborges@gmail.com>
+# SPDX-FileCopyrightText: 2015, 2016 GoSecure Inc.
+# SPDX-FileCopyrightText: 2019-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 """
 Telnet Transport and Authentication for the Honeypot
 
@@ -8,19 +12,19 @@ Telnet Transport and Authentication for the Honeypot
 from __future__ import annotations
 
 import time
+from typing import TYPE_CHECKING
 
 from twisted.internet import protocol
 from twisted.python import log
 
-from cowrie.core.config import CowrieConfig
+from cowrie.shell.honeyfs import read_honeyfs_bytes
 from cowrie.telnet.transport import CowrieTelnetTransport
 from cowrie.telnet.userauth import HoneyPotTelnetAuthProtocol
 from cowrie.telnet_proxy.server_transport import FrontendTelnetTransport
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from twisted.plugin import IPlugin
     from twisted.cred import portal as tp
+    from twisted.plugin import IPlugin
 
 
 class HoneyPotTelnetFactory(protocol.ServerFactory):
@@ -44,17 +48,20 @@ class HoneyPotTelnetFactory(protocol.ServerFactory):
         """
         Special delivery to the loggers to avoid scope problems
         """
-        args["sessionno"] = "T{}".format(str(args["sessionno"]))
+        args["sessionno"] = f"T{args['sessionno']}"
         for output in self.tac.output_plugins:
             output.logDispatch(**args)
 
     def startFactory(self) -> None:
+        """ """
         try:
-            honeyfs = CowrieConfig.get("honeypot", "contents_path")
-            issuefile = honeyfs + "/etc/issue.net"
-            with open(issuefile, "rb") as banner:
-                self.banner = banner.read()
-        except OSError:
+            self.banner = (
+                read_honeyfs_bytes("etc/issue.net")
+                .decode("utf-8", errors="replace")
+                .encode("utf-8")
+            )
+        except FileNotFoundError as e:
+            log.err(e, "ERROR: Failed to load /etc/issue.net")
             self.banner = b""
 
         # For use by the uptime command
@@ -68,11 +75,11 @@ class HoneyPotTelnetFactory(protocol.ServerFactory):
                 HoneyPotTelnetAuthProtocol, self.portal
             )
 
-        protocol.ServerFactory.startFactory(self)
+        super().startFactory()
         log.msg("Ready to accept Telnet connections")
 
     def stopFactory(self) -> None:
         """
         Stop output plugins
         """
-        protocol.ServerFactory.stopFactory(self)
+        super().stopFactory()

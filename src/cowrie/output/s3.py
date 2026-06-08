@@ -1,16 +1,19 @@
+# SPDX-FileCopyrightText: 2017 Jc2k <john.carr@unrouted.co.uk>
+# SPDX-FileCopyrightText: 2018-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """
 Send downloaded/uplaoded files to S3 (or compatible)
 """
 
 from __future__ import annotations
 
-from typing import Any
-
 from configparser import NoOptionError
+from typing import Any
 
 from botocore.exceptions import ClientError
 from botocore.session import get_session
-
 from twisted.internet import defer, threads
 from twisted.python import log
 

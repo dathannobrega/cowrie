@@ -1,9 +1,15 @@
+# SPDX-FileCopyrightText: 2015 mak <mak@lokahost.pl>
+# SPDX-FileCopyrightText: 1998-2011 Erik Andersen, Rob Landley, Denys Vlasenko
+# SPDX-FileCopyrightText: 2015-2025 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
 
 from twisted.python import log
 
 from cowrie.shell.command import HoneyPotCommand
-from cowrie.shell.honeypot import StdOutStdErrEmulationProtocol
+from cowrie.shell.pipe import PipeProtocol
 
 commands = {}
 
@@ -82,7 +88,7 @@ class Command_busybox(HoneyPotCommand):
             )
 
             # prepare command arguments
-            pp = StdOutStdErrEmulationProtocol(
+            pp = PipeProtocol(
                 self.protocol,
                 cmdclass,
                 self.protocol.pp.cmdargs[1:],

@@ -5,22 +5,23 @@ always composed of an op-code, a status code (for responses), and
 any needed data thereafter.
 """
 
-# Copyright (c) 2019 Guilherme Borges <guilhermerosasborges@gmail.com>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2019 Guilherme Borges <guilhermerosasborges@gmail.com>
+# SPDX-FileCopyrightText: 2021-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 from __future__ import annotations
 
 import struct
+from typing import TYPE_CHECKING
 
 from twisted.internet.address import IPv4Address, IPv6Address
 from twisted.internet.protocol import Factory, Protocol
 from twisted.python import log
 
-from cowrie.core.config import CowrieConfig
-
 from backend_pool.nat import NATService
 from backend_pool.pool_service import NoAvailableVMs, PoolService
-from typing import TYPE_CHECKING
+from cowrie.core.config import CowrieConfig
 
 if TYPE_CHECKING:
     from twisted.internet.interfaces import IAddress
@@ -172,7 +173,7 @@ class PoolServer(Protocol):
 
             log.msg(
                 eventid="cowrie.backend_pool.server",
-                format="Re-using VM %(guest_id)s (not used by attacker)",
+                format="Reusing VM %(guest_id)s (not used by attacker)",
                 guest_id=guest_id,
             )
 
@@ -180,14 +181,14 @@ class PoolServer(Protocol):
             if (not self.local_pool and self.use_nat) or self.pool_only:
                 self.factory.nat.free_binding(guest_id)
 
-            # free this connection and allow VM to be re-used
+            # free this connection and allow VM to be reused
             self.factory.pool_service.reuse_vm(guest_id)
 
         if response and self.transport:
             self.transport.write(response)
 
 
-class PoolServerFactory(Factory):
+class PoolServerFactory(Factory[PoolServer]):
     """
     Factory for PoolServer
     """
@@ -214,7 +215,8 @@ class PoolServerFactory(Factory):
         if self.pool_service:
             self.pool_service.shutdown_pool()
 
-    def buildProtocol(self, addr: IAddress) -> PoolServer:
+    def buildProtocol(self, addr: IAddress | None) -> PoolServer:
+        assert addr is not None
         assert isinstance(addr, (IPv4Address, IPv6Address))
         log.msg(
             eventid="cowrie.backend_pool.server",

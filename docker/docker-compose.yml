@@ -1,6 +1,8 @@
----
-version: '3'
+# SPDX-FileCopyrightText: 2021 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
+---
 volumes:
   cowrie-etc:
   cowrie-var:
@@ -9,8 +11,8 @@ services:
   cowrie:
     restart: always
     build:
-      context: context
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     ports:
       - "2222:2222"
       - "2223:2223"

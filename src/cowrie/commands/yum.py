@@ -1,5 +1,8 @@
-# Copyright (c) 2009 Upi Tamminen <desaster@gmail.com>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2018 FabiolaBusch
+# SPDX-FileCopyrightText: 2009 Upi Tamminen <desaster@gmail.com>
+# SPDX-FileCopyrightText: 2020-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 
 # Modified by Fabiola Buschendorf, https://github.com/FabiolaBusch
@@ -10,10 +13,9 @@ from __future__ import annotations
 import hashlib
 import random
 import re
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from twisted.internet import defer
-from twisted.internet import reactor
+from twisted.internet import defer, reactor
 from twisted.internet.defer import inlineCallbacks
 from twisted.python import log
 
@@ -45,22 +47,24 @@ class Command_yum(HoneyPotCommand):
 
     packages: dict[str, dict[str, Any]]
 
-    def start(self) -> None:
-        if len(self.args) == 0:
-            self.do_help()
-        elif len(self.args) > 0 and self.args[0] == "version":
-            self.do_version()
-        elif len(self.args) > 0 and self.args[0] == "install":
-            self.do_install()
-        else:
-            self.do_locked()
+    @inlineCallbacks
+    def start(self):
         self.packages = {}
+        match self.args:
+            case []:
+                yield self.do_help()
+            case ["version", *_]:
+                yield self.do_version()
+            case ["install", *_]:
+                yield self.do_install()
+            case _:
+                self.do_locked()
 
     def sleep(self, time: float, time2: float | None = None) -> defer.Deferred:
         d: defer.Deferred = defer.Deferred()
         if time2:
             time = random.randint(int(time * 100), int(time2 * 100)) / 100.0
-        reactor.callLater(time, d.callback, None)  # type: ignore[attr-defined]
+        reactor.callLater(time, d.callback, None)
         return d
 
     @inlineCallbacks
@@ -224,9 +228,7 @@ Options:
         self.write("--> Running transaction check\n")
         for p in self.packages:
             self.write(
-                "---> Package {}.{} {}.{} will be installed\n".format(
-                    p, self.packages[p]["version"], arch, self.packages[p]["release"]
-                )
+                f"---> Package {p}.{self.packages[p]['version']} {arch}.{self.packages[p]['release']} will be installed\n"
             )
         self.write("--> Finished Dependency Resolution\n")
         self.write("Beginning Kernel Module Plugin\n")
@@ -235,25 +237,18 @@ Options:
         self.write("Dependencies Resolved\n\n")
 
         # TODO: Is this working on all screens?
-        self.write("{}\n".format("=" * 176))
+        self.write(f"{'=' * 176}\n")
         # 195 characters
         self.write(" Package\t\t\tArch\t\t\tVersion\t\t\t\tRepository\t\t\tSize\n")
-        self.write("{}\n".format("=" * 176))
+        self.write(f"{'=' * 176}\n")
         self.write("Installing:\n")
         for p in self.packages:
             self.write(
-                " {}\t\t\t\t{}\t\t\t{}-{}\t\t\t{}\t\t\t\t{} k\n".format(
-                    p,
-                    arch,
-                    self.packages[p]["version"],
-                    self.packages[p]["release"],
-                    repository,
-                    self.packages[p]["size"],
-                )
+                f" {p}\t\t\t\t{arch}\t\t\t{self.packages[p]['version']}-{self.packages[p]['release']}\t\t\t{repository}\t\t\t\t{self.packages[p]['size']} k\n"
             )
         self.write("\n")
         self.write("Transaction Summary\n")
-        self.write("{}\n".format("=" * 176))
+        self.write(f"{'=' * 176}\n")
         self.write(f"Install  {len(self.packages)} Packages\n\n")
 
         self.write(f"Total download size: {totalsize} k\n")
@@ -275,28 +270,14 @@ Options:
         i = 1
         for p in self.packages:
             self.write(
-                "  Installing : {}-{}-{}.{} \t\t\t\t {}/{} \n".format(
-                    p,
-                    self.packages[p]["version"],
-                    self.packages[p]["release"],
-                    arch,
-                    i,
-                    len(self.packages),
-                )
+                f"  Installing : {p}-{self.packages[p]['version']}-{self.packages[p]['release']}.{arch} \t\t\t\t {i}/{len(self.packages)} \n"
             )
             yield self.sleep(0.5, 1)
             i += 1
         i = 1
         for p in self.packages:
             self.write(
-                "  Verifying : {}-{}-{}.{} \t\t\t\t {}/{} \n".format(
-                    p,
-                    self.packages[p]["version"],
-                    self.packages[p]["release"],
-                    arch,
-                    i,
-                    len(self.packages),
-                )
+                f"  Verifying : {p}-{self.packages[p]['version']}-{self.packages[p]['release']}.{arch} \t\t\t\t {i}/{len(self.packages)} \n"
             )
             yield self.sleep(0.5, 1)
             i += 1
@@ -304,13 +285,7 @@ Options:
         self.write("Installed:\n")
         for p in self.packages:
             self.write(
-                "  {}.{} {}:{}-{} \t\t".format(
-                    p,
-                    arch,
-                    random.randint(0, 2),
-                    self.packages[p]["version"],
-                    self.packages[p]["release"],
-                )
+                f"  {p}.{arch} {random.randint(0, 2)}:{self.packages[p]['version']}-{self.packages[p]['release']} \t\t"
             )
         self.write("\n")
         self.write("Complete!\n")

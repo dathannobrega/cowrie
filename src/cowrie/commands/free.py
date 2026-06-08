@@ -1,5 +1,6 @@
-# Copyright (c) 2015 Michel Oosterhof <michel@oosterhof.net>
-# All rights reserved.
+# SPDX-FileCopyrightText: 2015-2025 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 """
 This module ...
@@ -28,7 +29,7 @@ class Command_free(HoneyPotCommand):
     def call(self) -> None:
         # Parse options or display no files
         try:
-            opts, args = getopt.getopt(self.args, "mh")
+            opts, _args = getopt.getopt(self.args, "mh")
         except getopt.GetoptError:
             self.do_free()
             return
@@ -50,6 +51,10 @@ class Command_free(HoneyPotCommand):
 
         # Get real host memstats and add the calculated fields
         raw_mem_stats = self.get_free_stats()
+
+        if raw_mem_stats == {}:
+            return
+
         raw_mem_stats["calc_total_buffers_and_cache"] = (
             raw_mem_stats["Buffers"] + raw_mem_stats["Cached"]
         )
@@ -98,13 +103,16 @@ class Command_free(HoneyPotCommand):
             "MemAvailable",
         ]
         mem_info_map: dict[str, int] = {}
-        with open("/proc/meminfo") as proc_file:
-            for line in proc_file:
-                tokens = line.split(":")
+        try:
+            with open("/proc/meminfo") as proc_file:
+                for line in proc_file:
+                    tokens = line.split(":")
 
-                # Later we are going to do some math on those numbers, better not include uneeded keys for performance
-                if tokens[0] in needed_keys:
-                    mem_info_map[tokens[0]] = int(tokens[1].lstrip().split(" ")[0])
+                    # Later we are going to do some math on those numbers, better not include uneeded keys for performance
+                    if tokens[0] in needed_keys:
+                        mem_info_map[tokens[0]] = int(tokens[1].lstrip().split(" ")[0])
+        except Exception:
+            pass
 
         # Got a map with all tokens from /proc/meminfo and sizes in KBs
         return mem_info_map

@@ -1,5 +1,7 @@
-# Copyright (c) 2018 Danilo Vargas <danilo.vargas@csiete.org>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2018 Danilo Vargas <danilo.vargas@csiete.org>
+# SPDX-FileCopyrightText: 2018-2025 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 from __future__ import annotations
 
@@ -109,7 +111,7 @@ or available locally via: info '(coreutils) du invocation'\n"""
             else:
                 files = (self.protocol.fs.getfile(path)[:],)
         except Exception:
-            self.write(f"ls: cannot access {path}: No such file or directory\n")
+            self.errorWrite(f"ls: cannot access {path}: No such file or directory\n")
             return
 
         filenames = [x[A_NAME] for x in files]

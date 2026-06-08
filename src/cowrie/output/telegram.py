@@ -1,7 +1,13 @@
+# SPDX-FileCopyrightText: 2022 Louren van Garderen <mail@lourenvangarderen.nl>
+# SPDX-FileCopyrightText: 2023-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Simple Telegram Bot logger
 
 import treq
 from twisted.python import log
+
 import cowrie.core.output
 from cowrie.core.config import CowrieConfig
 
@@ -19,22 +25,23 @@ class Output(cowrie.core.output.Output):
         pass
 
     def write(self, event):
-        for i in list(event.keys()):
+        for i in list(event):
             # remove twisted 15 legacy keys
             if i.startswith("log_"):
                 del event[i]
 
-        logon_type = ""
         # Prepare logon type
-        if "HoneyPotSSHTransport" in (event["system"].split(","))[0]:
-            logon_type = "SSH"
-        elif "CowrieTelnetTransport" in (event["system"].split(","))[0]:
-            logon_type = "Telnet"
+        # if "HoneyPotSSHTransport" in (event["system"].split(","))[0]:
+        #     logon_type = "SSH"
+        # elif "CowrieTelnetTransport" in (event["system"].split(","))[0]:
+        #     logon_type = "Telnet"
+        # else:
+        #     logon_type = ""
 
         # Prepare base message
         msgtxt = "<strong>[Cowrie " + event["sensor"] + "]</strong>"
         msgtxt += "\nEvent: " + event["eventid"]
-        msgtxt += "\nLogon type: " + logon_type
+        # msgtxt += "\nLogon type: " + logon_type
         msgtxt += "\nSource: <code>" + event["src_ip"] + "</code>"
         msgtxt += "\nSession: <code>" + event["session"] + "</code>"
 
@@ -59,6 +66,7 @@ class Output(cowrie.core.output.Output):
                     ("parse_mode", "HTML"),
                     ("text", message),
                 ],
+                allow_redirects=False,
             )
         except Exception:
             log.msg("Telegram plugin request error")

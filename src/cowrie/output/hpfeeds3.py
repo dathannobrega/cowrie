@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2018 Jc2k <john.carr@unrouted.co.uk>
+# SPDX-FileCopyrightText: 2018-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """
 Output plugin for HPFeeds
 """
@@ -8,9 +13,7 @@ import json
 import logging
 
 from hpfeeds.twisted import ClientSessionService
-
-from twisted.internet import endpoints, ssl
-from twisted.internet import reactor
+from twisted.internet import endpoints, reactor, ssl
 from twisted.python import log
 
 import cowrie.core.output

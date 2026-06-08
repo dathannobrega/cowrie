@@ -1,4 +1,10 @@
+# SPDX-FileCopyrightText: 2017 grzegorzpro <grzegorz.prokopczyk@gmail.com>
+# SPDX-FileCopyrightText: 2017-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
+
 import json
 import socket
 
@@ -25,7 +31,7 @@ class Output(cowrie.core.output.Output):
         self.sock.close()
 
     def write(self, event):
-        for i in list(event.keys()):
+        for i in list(event):
             # Remove twisted 15 legacy keys
             if i.startswith("log_"):
                 del event[i]

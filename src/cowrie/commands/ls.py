@@ -1,5 +1,7 @@
-# Copyright (c) 2009 Upi Tamminen <desaster@gmail.com>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2009-2014 Upi Tamminen <desaster@gmail.com>
+# SPDX-FileCopyrightText: 2015-2025 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 from __future__ import annotations
 
@@ -48,8 +50,8 @@ class Command_ls(HoneyPotCommand):
                 ["help", "version", "param"],
             )
         except getopt.GetoptError as err:
-            self.write(f"ls: {err}\n")
-            self.write("Try 'ls --help' for more information.\n")
+            self.errorWrite(f"ls: {err}\n")
+            self.errorWrite("Try 'ls --help' for more information.\n")
             return
         for x, _a in opts:
             if x in ("-l"):
@@ -92,7 +94,7 @@ class Command_ls(HoneyPotCommand):
                 file[fs.A_NAME] = path
                 files = [file]
         except Exception:
-            self.write(f"ls: cannot access {path}: No such file or directory\n")
+            self.errorWrite(f"ls: cannot access {path}: No such file or directory\n")
             return
         return files
 

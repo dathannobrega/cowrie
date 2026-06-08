@@ -1,38 +1,19 @@
-# Copyright (c) 2016 Thomas Nicholson <tnnich@googlemail.com>
-# All rights reserved.
+# SPDX-FileCopyrightText: 2019 Guilherme Borges <guilhermerosasborges@gmail.com>
+# SPDX-FileCopyrightText: 2016 Thomas Nicholson <tnnich@googlemail.com>
+# SPDX-FileCopyrightText: 2021-2026 Michel Oosterhof <michel@oosterhof.net>
 #
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions
-# are met:
-#
-# 1. Redistributions of source code must retain the above copyright
-#    notice, this list of conditions and the following disclaimer.
-# 2. Redistributions in binary form must reproduce the above copyright
-#    notice, this list of conditions and the following disclaimer in the
-#    documentation and/or other materials provided with the distribution.
-# 3. The names of the author(s) may not be used to endorse or promote
-#    products derived from this software without specific prior written
-#    permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE AUTHORS ``AS IS'' AND ANY EXPRESS OR
-# IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
-# OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-# IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY DIRECT, INDIRECT,
-# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
-# AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-# OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
-# SUCH DAMAGE.
+# SPDX-License-Identifier: BSD-3-Clause
 
 from __future__ import annotations
 
-from twisted.python import log
+import hashlib
+import os
+
 from twisted.conch.ssh import filetransfer
+from twisted.python import log
 
+from cowrie.core.config import CowrieConfig
 from cowrie.ssh_proxy.protocols import base_protocol
-
 
 # PACKETLAYOUT = {
 #     1: "SSH_FXP_INIT",
@@ -84,6 +65,8 @@ class SFTP(base_protocol.BaseProtocol):
 
     def __init__(self, uuid, chan_name, ssh):
         super().__init__(uuid, chan_name, ssh)
+
+        self.downloadPath: str = CowrieConfig.get("honeypot", "download_path")
 
         self.clientPacket = base_protocol.BaseProtocol()
         self.serverPacket = base_protocol.BaseProtocol()
@@ -213,6 +196,28 @@ class SFTP(base_protocol.BaseProtocol):
                 elif b"put" in self.command:
                     log.msg(
                         parent + " [SFTP] Finished Uploading: " + self.path.decode()
+                    )
+
+                    # TODO: should use artifact functions
+                    shasum = hashlib.sha256(self.theFile).hexdigest()
+                    outfile = os.path.join(self.downloadPath, shasum)
+                    fname = self.command.decode().split(" ")[-1]
+                    duplicate = os.path.exists(outfile)
+
+                    if not duplicate:
+                        f = open(outfile, "wb")
+                        f.write(self.theFile)
+                        f.close()
+
+                    log.msg(
+                        format='SFTP Uploaded file "%(filename)s" to %(outfile)s',
+                        eventid="cowrie.session.file_upload",
+                        filename=fname,
+                        duplicate=duplicate,
+                        url=fname,
+                        outfile=outfile,
+                        shasum=shasum,
+                        destfile=fname,
                     )
 
                     # if self.out.cfg.getboolean(['download', 'passive']):

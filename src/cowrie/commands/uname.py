@@ -1,5 +1,7 @@
-# Copyright (c) 2010 Upi Tamminen <desaster@gmail.com>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2010 Upi Tamminen <desaster@gmail.com>
+# SPDX-FileCopyrightText: 2014-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 """
 uname command
@@ -144,7 +146,7 @@ class Command_uname(HoneyPotCommand):
 
                     # Set all opts for -a/--all, single opt otherwise:
                     if target_opt == "__ALL__":
-                        for key in opts.keys():
+                        for key in opts:
                             opts[key] = True
                     else:
                         opts[target_opt] = True

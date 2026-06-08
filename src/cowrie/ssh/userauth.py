@@ -1,5 +1,7 @@
-# Copyright (c) 2009-2014 Upi Tamminen <desaster@gmail.com>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2009-2014 Upi Tamminen <desaster@gmail.com>
+# SPDX-FileCopyrightText: 2015-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 
 from __future__ import annotations
@@ -13,11 +15,12 @@ from twisted.conch.ssh import userauth
 from twisted.conch.ssh.common import NS, getNS
 from twisted.conch.ssh.transport import DISCONNECT_PROTOCOL_ERROR
 from twisted.internet import defer
-from twisted.python.failure import Failure
 from twisted.python import log
+from twisted.python.failure import Failure
 
 from cowrie.core import credentials
 from cowrie.core.config import CowrieConfig
+from cowrie.shell.honeyfs import read_honeyfs_bytes
 
 
 class HoneyPotSSHUserAuthServer(userauth.SSHUserAuthServer):
@@ -55,15 +58,19 @@ class HoneyPotSSHUserAuthServer(userauth.SSHUserAuthServer):
         if self.bannerSent:
             return
         self.bannerSent = True
+
         try:
-            issuefile = CowrieConfig.get("honeypot", "contents_path") + "/etc/issue.net"
-            with open(issuefile, "rb") as issue:
-                data = issue.read()
-        except OSError:
+            banner = read_honeyfs_bytes("etc/issue.net").decode(
+                "utf-8", errors="replace"
+            )
+        except FileNotFoundError as e:
+            log.err(e, "ERROR: Failed to load /etc/issue.net")
             return
-        if not data or not data.strip():
+
+        if not banner or not banner.strip():
             return
-        self.transport.sendPacket(userauth.MSG_USERAUTH_BANNER, NS(data) + NS(b"en"))
+
+        self.transport.sendPacket(userauth.MSG_USERAUTH_BANNER, NS(banner) + NS(b"en"))
 
     def ssh_USERAUTH_REQUEST(self, packet: bytes) -> Any:
         """
@@ -98,6 +105,8 @@ class HoneyPotSSHUserAuthServer(userauth.SSHUserAuthServer):
         Overridden to pass src_ip to credentials.UsernamePasswordIP
         """
         password = getNS(packet[1:])[0]
+        if password == b"\x00":
+            return None  # sshamble
         srcIp = self.transport.transport.getPeer().host  # type: ignore
         c = credentials.UsernamePasswordIP(self.user, password, srcIp)
         return self.portal.login(c, srcIp, IConchUser).addErrback(self._ebPassword)

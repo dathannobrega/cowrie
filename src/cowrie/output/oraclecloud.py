@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2023 Mattia Moretti <mattia.moretti@oracle.com>
+# SPDX-FileCopyrightText: 2024-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
 
 import datetime
@@ -6,7 +11,6 @@ import secrets
 import string
 
 import oci
-
 from twisted.python import log
 
 import cowrie.core.output
@@ -111,7 +115,7 @@ class Output(cowrie.core.output.Output):
         Push to Oracle Cloud put_logs
         """
         # Add the entry to redis
-        for i in list(event.keys()):
+        for i in list(event):
             # Remove twisted 15 legacy keys
             if i.startswith("log_"):
                 del event[i]

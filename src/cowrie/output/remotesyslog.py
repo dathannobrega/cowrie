@@ -1,12 +1,17 @@
+# SPDX-FileCopyrightText: 2024 mjovanovic9999
+# SPDX-FileCopyrightText: 2024-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """
 Simple remote syslog plugin.
 """
 
-import cowrie.core.output
-
 import logging
 import logging.handlers
 import socket
+
+import cowrie.core.output
 from cowrie.core.config import CowrieConfig
 
 
@@ -37,7 +42,7 @@ class Output(cowrie.core.output.Output):
         self.handler.close()
 
     def write(self, event):
-        for i in list(event.keys()):
+        for i in list(event):
             # Remove twisted 15 legacy keys
             if i.startswith("log_") or i == "time" or i == "system":
                 del event[i]

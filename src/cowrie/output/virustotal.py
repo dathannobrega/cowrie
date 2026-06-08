@@ -1,58 +1,61 @@
-# Copyright (c) 2015 Michel Oosterhof <michel@oosterhof.net>
-# All rights reserved.
+# SPDX-FileCopyrightText: 2015-2026 Michel Oosterhof <michel@oosterhof.net>
 #
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions
-# are met:
-#
-# 1. Redistributions of source code must retain the above copyright
-#    notice, this list of conditions and the following disclaimer.
-# 2. Redistributions in binary form must reproduce the above copyright
-#    notice, this list of conditions and the following disclaimer in the
-#    documentation and/or other materials provided with the distribution.
-# 3. The names of the author(s) may not be used to endorse or promote
-#    products derived from this software without specific prior written
-#    permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE AUTHORS ``AS IS'' AND ANY EXPRESS OR
-# IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
-# OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-# IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY DIRECT, INDIRECT,
-# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
-# AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-# OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
-# SUCH DAMAGE.
+# SPDX-License-Identifier: BSD-3-Clause
 
 """
-Send SSH logins to Virustotal
+Send SSH logins to VirusTotal using v3 API
 """
 
 from __future__ import annotations
 
+import base64
 import datetime
 import json
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode, urlparse
 
-from zope.interface import implementer
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
-from twisted.internet import defer
-from twisted.internet import reactor
+from twisted.internet import defer, reactor
+from twisted.internet.protocol import connectionDone
 from twisted.python import log
 from twisted.web import client, http_headers
-from twisted.web.iweb import IBodyProducer
+from twisted.web.iweb import IBodyProducer, IResponse
+from zope.interface import implementer
 
 import cowrie.core.output
 from cowrie.core.config import CowrieConfig
 
 COWRIE_USER_AGENT = "Cowrie Honeypot"
-VTAPI_URL = "https://www.virustotal.com/vtapi/v2/"
+VTAPI_URL = "https://www.virustotal.com/api/v3/"
 COMMENT = "First seen by #Cowrie SSH/telnet Honeypot http://github.com/cowrie/cowrie"
 TIME_SINCE_FIRST_DOWNLOAD = datetime.timedelta(minutes=1)
+
+
+def readBody(response: IResponse) -> defer.Deferred:
+    """
+    Read response body with proper handling to avoid deprecation warnings.
+    This is a wrapper around client.readBody that ensures compatibility.
+    """
+    from twisted.internet.protocol import Protocol
+
+    d: defer.Deferred = defer.Deferred()
+
+    class BodyCollector(Protocol):
+        def __init__(self):
+            self.data = b""
+
+        def dataReceived(self, data):
+            self.data += data
+
+        def connectionLost(self, reason=connectionDone):
+            d.callback(self.data)
+
+    collector = BodyCollector()
+    response.deliverBody(collector)
+    return d
 
 
 class Output(cowrie.core.output.Output):
@@ -67,6 +70,8 @@ class Output(cowrie.core.output.Output):
     scan_url: bool
     scan_file: bool
     url_cache: dict[str, datetime.datetime]  # url and last time succesfully submitted
+    collection_name: str | None = None
+    collection_id: str | None = None
 
     def start(self) -> None:
         """
@@ -88,12 +93,19 @@ class Output(cowrie.core.output.Output):
             "output_virustotal", "scan_file", fallback=True
         )
         self.scan_url = CowrieConfig.getboolean(
-            "output_virustotal", "scan_url", fallback=False
+            "output_virustotal", "scan_url", fallback=True
         )
         self.commenttext = CowrieConfig.get(
             "output_virustotal", "commenttext", fallback=COMMENT
         )
+        self.collection_name = CowrieConfig.get(
+            "output_virustotal", "collection", fallback=None
+        )
         self.agent = client.Agent(reactor)
+
+        # Initialize collection if configured
+        if self.collection_name:
+            self._init_collection()
 
     def stop(self) -> None:
         """
@@ -133,164 +145,216 @@ class Output(cowrie.core.output.Output):
             return False
         return True
 
+    def _build_headers(
+        self, content_type: str | None = None, extra_headers: dict | None = None
+    ) -> http_headers.Headers:
+        """Build common HTTP headers for VT API requests"""
+        headers_dict = {
+            "User-Agent": [COWRIE_USER_AGENT],
+            "x-apikey": [self.apiKey],
+        }
+        if content_type:
+            headers_dict["Content-Type"] = [content_type]
+        if extra_headers:
+            headers_dict.update(extra_headers)
+        return http_headers.Headers(headers_dict)
+
+    def _make_request(
+        self,
+        method: bytes,
+        url: bytes,
+        headers: http_headers.Headers,
+        body: IBodyProducer | None = None,
+        process_response: Callable | None = None,
+        valid_codes: list[int] | None = None,
+        error_prefix: str = "VT request",
+    ) -> defer.Deferred[Any]:
+        """
+        Make an HTTP request with standard error handling
+
+        Args:
+            method: HTTP method (GET, POST, etc)
+            url: Full URL to request
+            headers: HTTP headers
+            body: Optional request body
+            process_response: Callback to process successful response body
+            valid_codes: List of valid HTTP response codes (default: [200])
+            error_prefix: Prefix for error messages
+        """
+        if valid_codes is None:
+            valid_codes = [200]
+
+        d = self.agent.request(method, url, headers, body)
+
+        def cbResponse(response):
+            if response.code in valid_codes:
+                d = readBody(response)
+                if process_response:
+                    d.addCallback(process_response)
+                return d
+            else:
+                log.msg(f"{error_prefix} failed: {response.code} {response.phrase}")
+
+        def cbError(failure):
+            log.msg(f"{error_prefix} error")
+            failure.printTraceback()
+
+        d.addCallback(cbResponse)
+        d.addErrback(cbError)
+        return d  # type: ignore[no-any-return]
+
+    def _parse_scan_results(
+        self, last_analysis_results: dict
+    ) -> dict[str, dict[str, str]]:
+        """Parse scan results into standardized format"""
+        scans_summary: dict[str, dict[str, str]] = {}
+        for engine, result in last_analysis_results.items():
+            engine_key = engine.lower()
+            scans_summary[engine_key] = {
+                "detected": str(
+                    result.get("category") in ["malicious", "suspicious"]
+                ).lower(),
+                "result": str(result.get("result", "")).lower(),
+            }
+        return scans_summary
+
     def scanfile(self, event):
         """
         Check file scan report for a hash
         Argument is full event so we can access full file later on
         """
-        vtUrl = f"{VTAPI_URL}file/report".encode()
-        headers = http_headers.Headers({"User-Agent": [COWRIE_USER_AGENT]})
-        fields = {"apikey": self.apiKey, "resource": event["shasum"], "allinfo": 1}
-        body = StringProducer(urlencode(fields).encode("utf-8"))
-        d = self.agent.request(b"POST", vtUrl, headers, body)
+        vtUrl = f"{VTAPI_URL}files/{event['shasum']}".encode()
+        headers = self._build_headers()
 
-        def cbResponse(response):
-            """
-            Main response callback, check HTTP response code
-            """
-            if response.code == 200:
-                d = client.readBody(response)
-                d.addCallback(cbBody)
-                return d
-            else:
-                log.msg(f"VT scanfile failed: {response.code} {response.phrase}")
-
-        def cbBody(body):
-            """
-            Received body
-            """
-            return processResult(body)
-
-        def cbPartial(failure):
-            """
-            Google HTTP Server does not set Content-Length. Twisted marks it as partial
-            """
-            return processResult(failure.value.response)
-
-        def cbError(failure):
-            log.msg("VT: Error in scanfile")
-            failure.printTraceback()
-
-        def processResult(result):
-            """
-            Extract the information we need from the body
-            """
+        def process_response(body_bytes):
             if self.debug:
-                log.msg(f"VT scanfile result: {result}")
-            result = result.decode("utf8")
+                log.msg(f"VT scanfile result: {body_bytes}")
+            result = body_bytes.decode("utf8")
             j = json.loads(result)
-            log.msg("VT: {}".format(j["verbose_msg"]))
-            if j["response_code"] == 0:
-                log.msg(
-                    eventid="cowrie.virustotal.scanfile",
-                    format="VT: New file %(sha256)s",
-                    session=event["session"],
-                    sha256=j["resource"],
-                    is_new="true",
-                )
 
-                try:
-                    b = os.path.basename(urlparse(event["url"]).path)
-                    if b == "":
+            # Check for errors in v3 API response
+            if "error" in j:
+                if j["error"]["code"] == "NotFoundError":
+                    log.msg("VT: New file - not found in database")
+                    log.msg(
+                        eventid="cowrie.virustotal.scanfile",
+                        format="VT: New file %(sha256)s",
+                        session=event["session"],
+                        sha256=event["shasum"],
+                        is_new="true",
+                    )
+
+                    try:
+                        b = os.path.basename(urlparse(event["url"]).path)
+                        fileName = b if b else event["shasum"]
+                    except KeyError:
                         fileName = event["shasum"]
-                    else:
-                        fileName = b
-                except KeyError:
-                    fileName = event["shasum"]
 
-                if self.upload is True:
-                    return self.postfile(event["outfile"], fileName)
+                    if self.upload:
+                        return self.postfile(event["outfile"], fileName)
                 else:
-                    return
-            elif j["response_code"] == 1:
-                log.msg("VT: response=1: this has been scanned before")
-                # Add detailed report to json log
-                scans_summary: dict[str, dict[str, str]] = {}
-                for feed, info in j["scans"].items():
-                    feed_key = feed.lower()
-                    scans_summary[feed_key] = {}
-                    scans_summary[feed_key]["detected"] = str(info["detected"]).lower()
-                    scans_summary[feed_key]["result"] = str(info["result"]).lower()
+                    log.msg(
+                        f"VT: Error - {j['error']['code']}: {j['error']['message']}"
+                    )
+                return
+
+            # Process successful response with file data
+            if "data" in j:
+                data = j["data"]
+                attributes = data.get("attributes", {})
+
+                # Extract scan results
+                last_analysis_results = attributes.get("last_analysis_results", {})
+                stats = attributes.get("last_analysis_stats", {})
+
+                log.msg("VT: File found in database")
+                scans_summary = self._parse_scan_results(last_analysis_results)
+
+                malicious_count = stats.get("malicious", 0)
+                total_count = sum(stats.values())
+                scan_date = attributes.get("last_analysis_date", "unknown")
+
                 log.msg(
                     eventid="cowrie.virustotal.scanfile",
                     format="VT: Binary file with sha256 %(sha256)s was found malicious "
                     "by %(positives)s out of %(total)s feeds (scanned on %(scan_date)s)",
                     session=event["session"],
-                    positives=j["positives"],
-                    total=j["total"],
-                    scan_date=j["scan_date"],
-                    sha256=j["resource"],
+                    positives=malicious_count,
+                    total=total_count,
+                    scan_date=scan_date,
+                    sha256=event["shasum"],
                     scans=scans_summary,
                     is_new="false",
                 )
-                log.msg("VT: permalink: {}".format(j["permalink"]))
-            elif j["response_code"] == -2:
-                log.msg("VT: response=-2: this has been queued for analysis already")
+                log.msg(
+                    f"VT: permalink: https://www.virustotal.com/gui/file/{event['shasum']}"
+                )
             else:
-                log.msg("VT: unexpected response code: {}".format(j["response_code"]))
+                log.msg("VT: unexpected response format")
 
-        d.addCallback(cbResponse)
-        d.addErrback(cbError)
-        return d
+        return self._make_request(
+            b"GET",
+            vtUrl,
+            headers,
+            process_response=process_response,
+            valid_codes=[200, 404],
+            error_prefix="VT scanfile",
+        )
 
     def postfile(self, artifact, fileName):
         """
         Send a file to VirusTotal
         """
-        vtUrl = f"{VTAPI_URL}file/scan".encode()
-        fields = {("apikey", self.apiKey)}
-        files = {("file", fileName, open(artifact, "rb"))}
-        if self.debug:
-            log.msg(f"submitting to VT: {files!r}")
-        contentType, body = encode_multipart_formdata(fields, files)
+        vtUrl = f"{VTAPI_URL}files".encode()
+        fields = {}  # v3 API doesn't need apikey in form data
+        with open(artifact, "rb") as f:
+            files = {("file", fileName, f)}
+            if self.debug:
+                log.msg(f"submitting to VT: {files!r}")
+            contentType, body = encode_multipart_formdata(fields, files)
         producer = StringProducer(body)
-        headers = http_headers.Headers(
-            {
-                "User-Agent": [COWRIE_USER_AGENT],
-                "Accept": ["*/*"],
-                "Content-Type": [contentType],
-            }
+        headers = self._build_headers(
+            content_type=contentType.decode("utf-8"), extra_headers={"Accept": ["*/*"]}
         )
 
-        d = self.agent.request(b"POST", vtUrl, headers, producer)
-
-        def cbBody(body):
-            return processResult(body)
-
-        def cbPartial(failure):
-            """
-            Google HTTP Server does not set Content-Length. Twisted marks it as partial
-            """
-            return processResult(failure.value.response)
-
-        def cbResponse(response):
-            if response.code == 200:
-                d = client.readBody(response)
-                d.addCallback(cbBody)
-                d.addErrback(cbPartial)
-                return d
-            else:
-                log.msg(f"VT postfile failed: {response.code} {response.phrase}")
-
-        def cbError(failure):
-            failure.printTraceback()
-
-        def processResult(result):
+        def process_response(body_bytes):
             if self.debug:
-                log.msg(f"VT postfile result: {result}")
-            result = result.decode("utf8")
+                log.msg(f"VT postfile result: {body_bytes}")
+            result = body_bytes.decode("utf8")
             j = json.loads(result)
-            # This is always a new resource, since we did the scan before
-            # so always create the comment
-            log.msg("response=0: posting comment")
-            if self.comment is True:
-                return self.postcomment(j["resource"])
-            else:
+
+            # Check for errors in v3 API response
+            if "error" in j:
+                log.msg(
+                    f"VT: Upload error - {j['error']['code']}: {j['error']['message']}"
+                )
                 return
 
-        d.addCallback(cbResponse)
-        d.addErrback(cbError)
-        return d
+            # Process successful upload response
+            if "data" in j:
+                data = j["data"]
+                file_id = data.get("id")
+                if file_id:
+                    log.msg("VT: File uploaded successfully")
+                    # Add to collection if enabled
+                    if self.collection_name:
+                        self._add_to_collection("files", file_id, f"file {file_id}")
+                    # Post comment if enabled
+                    if self.comment:
+                        return self._post_comment("files", file_id, "Comment")
+                else:
+                    log.msg("VT: Upload successful but no file ID returned")
+            else:
+                log.msg("VT: unexpected upload response format")
+
+        return self._make_request(
+            b"POST",
+            vtUrl,
+            headers,
+            body=producer,
+            process_response=process_response,
+            error_prefix="VT postfile",
+        )
 
     def scanurl(self, event):
         """
@@ -298,156 +362,325 @@ class Output(cowrie.core.output.Output):
         """
         if event["url"] in self.url_cache:
             log.msg(
-                "output_virustotal: url {} was already successfully submitted".format(
-                    event["url"]
-                )
+                f"output_virustotal: url {event['url']} was already successfully submitted"
             )
             return
 
-        vtUrl = f"{VTAPI_URL}url/report".encode()
-        headers = http_headers.Headers({"User-Agent": [COWRIE_USER_AGENT]})
-        fields = {
-            "apikey": self.apiKey,
-            "resource": event["url"],
-            "scan": 1,
-            "allinfo": 1,
-        }
-        body = StringProducer(urlencode(fields).encode("utf-8"))
-        d = self.agent.request(b"POST", vtUrl, headers, body)
+        # First submit the URL for scanning, then get the report
+        # v3 API requires URL to be base64 encoded with padding removed
+        url_id = base64.urlsafe_b64encode(event["url"].encode()).decode().rstrip("=")
 
-        def cbResponse(response):
-            """
-            Main response callback, checks HTTP response code
-            """
-            if response.code == 200:
-                log.msg(f"VT scanurl successful: {response.code} {response.phrase}")
-                d = client.readBody(response)
-                d.addCallback(cbBody)
-                return d
-            else:
-                log.msg(f"VT scanurl failed: {response.code} {response.phrase}")
+        vtUrl = f"{VTAPI_URL}urls/{url_id}".encode()
+        headers = self._build_headers()
 
-        def cbBody(body):
-            """
-            Received body
-            """
-            return processResult(body)
-
-        def cbPartial(failure):
-            """
-            Google HTTP Server does not set Content-Length. Twisted marks it as partial
-            """
-            return processResult(failure.value.response)
-
-        def cbError(failure):
-            log.msg("cbError")
-            failure.printTraceback()
-
-        def processResult(result):
-            """
-            Extract the information we need from the body
-            """
+        def process_response(body_bytes):
             if self.debug:
-                log.msg(f"VT scanurl result: {result}")
-            if result == b"[]\n":
-                log.err(f"VT scanurl did not return results: {result}")
+                log.msg(f"VT scanurl result: {body_bytes}")
+            if body_bytes == b"[]\n":
+                log.err(f"VT scanurl did not return results: {body_bytes}")
                 return
-            result = result.decode("utf8")
+            result = body_bytes.decode("utf8")
             j = json.loads(result)
 
             # we got a status=200 assume it was successfully submitted
             self.url_cache[event["url"]] = datetime.datetime.now()
 
-            if j["response_code"] == 0:
-                log.msg(
-                    eventid="cowrie.virustotal.scanurl",
-                    format="VT: New URL %(url)s",
-                    session=event["session"],
-                    url=event["url"],
-                    is_new="true",
-                )
-                return d
-            elif j["response_code"] == 1 and "scans" not in j:
-                log.msg(
-                    "VT: response=1: this was submitted before but has not yet been scanned."
-                )
-            elif j["response_code"] == 1 and "scans" in j:
-                log.msg("VT: response=1: this has been scanned before")
-                # Add detailed report to json log
-                scans_summary: dict[str, dict[str, str]] = {}
-                for feed, info in j["scans"].items():
-                    feed_key = feed.lower()
-                    scans_summary[feed_key] = {}
-                    scans_summary[feed_key]["detected"] = str(info["detected"]).lower()
-                    scans_summary[feed_key]["result"] = str(info["result"]).lower()
+            # Check for errors in v3 API response
+            if "error" in j:
+                if j["error"]["code"] == "NotFoundError":
+                    log.msg("VT: New URL - not found in database")
+                    log.msg(
+                        eventid="cowrie.virustotal.scanurl",
+                        format="VT: New URL %(url)s",
+                        session=event["session"],
+                        url=event["url"],
+                        is_new="true",
+                    )
+                    # Submit URL for scanning
+                    return self.submiturl(event)
+                else:
+                    log.msg(
+                        f"VT: Error - {j['error']['code']}: {j['error']['message']}"
+                    )
+                return
+
+            # Process successful response with URL data
+            if "data" in j:
+                data = j["data"]
+                attributes = data.get("attributes", {})
+
+                # Check if URL has been scanned
+                last_analysis_results = attributes.get("last_analysis_results", {})
+                if not last_analysis_results:
+                    log.msg("VT: URL was submitted but has not yet been scanned")
+                    return
+
+                stats = attributes.get("last_analysis_stats", {})
+
+                log.msg("VT: URL has been scanned before")
+                scans_summary = self._parse_scan_results(last_analysis_results)
+
+                malicious_count = stats.get("malicious", 0)
+                total_count = sum(stats.values())
+                scan_date = attributes.get("last_analysis_date", "unknown")
+
                 log.msg(
                     eventid="cowrie.virustotal.scanurl",
                     format="VT: URL %(url)s was found malicious by "
                     "%(positives)s out of %(total)s feeds (scanned on %(scan_date)s)",
                     session=event["session"],
-                    positives=j["positives"],
-                    total=j["total"],
-                    scan_date=j["scan_date"],
-                    url=j["url"],
+                    positives=malicious_count,
+                    total=total_count,
+                    scan_date=scan_date,
+                    url=event["url"],
                     scans=scans_summary,
                     is_new="false",
                 )
-                log.msg("VT: permalink: {}".format(j["permalink"]))
-            elif j["response_code"] == -2:
-                log.msg("VT: response=-2: this has been queued for analysis already")
-                log.msg("VT: permalink: {}".format(j["permalink"]))
+                log.msg(f"VT: permalink: https://www.virustotal.com/gui/url/{url_id}")
             else:
-                log.msg("VT: unexpected response code: {}".format(j["response_code"]))
+                log.msg("VT: unexpected response format")
 
-        d.addCallback(cbResponse)
-        d.addErrback(cbError)
+        d = self._make_request(
+            b"GET",
+            vtUrl,
+            headers,
+            process_response=process_response,
+            error_prefix="VT scanurl",
+        )
+        if d:
+            # Log success message on successful response
+            d.addCallback(
+                lambda _: log.msg("VT scanurl successful: 200 OK")
+                if _ is not None
+                else None
+            )
         return d
 
-    def postcomment(self, resource):
+    def submiturl(self, event):
         """
-        Send a comment to VirusTotal with Twisted
+        Submit a URL for scanning in VirusTotal v3 API
         """
-        vtUrl = f"{VTAPI_URL}comments/put".encode()
-        parameters = {
-            "resource": resource,
-            "comment": self.commenttext,
-            "apikey": self.apiKey,
-        }
-        headers = http_headers.Headers({"User-Agent": [COWRIE_USER_AGENT]})
-        body = StringProducer(urlencode(parameters).encode("utf-8"))
-        d = self.agent.request(b"POST", vtUrl, headers, body)
+        vtUrl = f"{VTAPI_URL}urls".encode()
+        headers = self._build_headers(content_type="application/x-www-form-urlencoded")
+        body = StringProducer(urlencode({"url": event["url"]}).encode("utf-8"))
 
-        def cbBody(body):
-            return processResult(body)
-
-        def cbPartial(failure):
-            """
-            Google HTTP Server does not set Content-Length. Twisted marks it as partial
-            """
-            return processResult(failure.value.response)
-
-        def cbResponse(response):
-            if response.code == 200:
-                d = client.readBody(response)
-                d.addCallback(cbBody)
-                d.addErrback(cbPartial)
-                return d
-            else:
-                log.msg(f"VT postcomment failed: {response.code} {response.phrase}")
-
-        def cbError(failure):
-            failure.printTraceback()
-
-        def processResult(result):
+        def process_response(body_bytes):
             if self.debug:
-                log.msg(f"VT postcomment result: {result}")
-            result = result.decode("utf8")
+                log.msg(f"VT submiturl result: {body_bytes}")
+            result = body_bytes.decode("utf8")
             j = json.loads(result)
-            return j["response_code"]
 
-        d.addCallback(cbResponse)
-        d.addErrback(cbError)
-        return d
+            # Check for errors in v3 API response
+            if "error" in j:
+                log.msg(
+                    f"VT: URL submission error - {j['error']['code']}: {j['error']['message']}"
+                )
+                return
+
+            # Process successful submission response
+            if "data" in j:
+                data = j["data"]
+                url_id = data.get("id")
+                if url_id:
+                    log.msg("VT: URL submitted successfully for scanning")
+                    # Add to collection if enabled
+                    if self.collection_name:
+                        self._add_to_collection("urls", url_id, f"URL {url_id}")
+                    # Post comment if enabled (this is a new URL submission)
+                    if self.comment:
+                        return self._post_comment("urls", url_id, "URL comment")
+                else:
+                    log.msg("VT: URL submission successful but no ID returned")
+            else:
+                log.msg("VT: unexpected URL submission response format")
+
+        return self._make_request(
+            b"POST",
+            vtUrl,
+            headers,
+            body=body,
+            process_response=process_response,
+            error_prefix="VT submiturl",
+        )
+
+    def _post_comment(
+        self, resource_type: str, resource_id: str, comment_type: str
+    ) -> defer.Deferred:
+        """
+        Send a comment to VirusTotal for a file or URL
+
+        Args:
+            resource_type: 'files' or 'urls'
+            resource_id: The file hash or URL ID
+            comment_type: Description for logging ('Comment' or 'URL comment')
+        """
+        vtUrl = f"{VTAPI_URL}{resource_type}/{resource_id}/comments".encode()
+        comment_data = {
+            "data": {"type": "comment", "attributes": {"text": self.commenttext}}
+        }
+        headers = self._build_headers(content_type="application/json")
+        body = StringProducer(json.dumps(comment_data).encode("utf-8"))
+
+        def process_response(body_bytes):
+            if self.debug:
+                log.msg(f"VT post{comment_type.lower()} result: {body_bytes}")
+            result = body_bytes.decode("utf8")
+            j = json.loads(result)
+
+            # Check for errors in v3 API response
+            if "error" in j:
+                log.msg(
+                    f"VT: {comment_type} error - {j['error']['code']}: {j['error']['message']}"
+                )
+                return False
+
+            # Process successful comment response
+            if "data" in j:
+                log.msg(f"VT: {comment_type} posted successfully")
+                return True
+            else:
+                log.msg(f"VT: unexpected {comment_type.lower()} response format")
+                return False
+
+        return self._make_request(
+            b"POST",
+            vtUrl,
+            headers,
+            body=body,
+            process_response=process_response,
+            error_prefix=f"VT post{comment_type.lower()}",
+        )
+
+    def _init_collection(self) -> None:
+        """
+        Initialize collection - create if doesn't exist or get ID if exists
+        This is called during start() if collection is configured
+        """
+        # Try to create the collection (it's idempotent - won't duplicate if exists)
+        vtUrl = f"{VTAPI_URL}collections".encode()
+        collection_data = {
+            "data": {
+                "type": "collection",
+                "attributes": {
+                    "name": self.collection_name,
+                    "description": f"Cowrie honeypot artifacts - {self.collection_name}",
+                },
+            }
+        }
+        headers = self._build_headers(content_type="application/json")
+        body = StringProducer(json.dumps(collection_data).encode("utf-8"))
+
+        def process_response(body_bytes):
+            if self.debug:
+                log.msg(f"VT create collection result: {body_bytes}")
+            result = body_bytes.decode("utf8")
+            j = json.loads(result)
+
+            # Check for errors in v3 API response
+            if "error" in j:
+                error_code = j["error"].get("code")
+                # AlreadyExistsError means collection exists - that's OK
+                if error_code == "AlreadyExistsError":
+                    log.msg(
+                        f"VT: Collection '{self.collection_name}' already exists - will use existing"
+                    )
+                    # We'll get the ID from the error details if available
+                    # Otherwise we'll get it on first add operation
+                else:
+                    log.msg(
+                        f"VT: Collection creation error - {j['error']['code']}: {j['error'].get('message', 'Unknown error')}"
+                    )
+                return
+
+            # Process successful creation response
+            if "data" in j:
+                data = j["data"]
+                collection_id = data.get("id")
+                if collection_id:
+                    self.collection_id = collection_id
+                    log.msg(
+                        f"VT: Collection '{self.collection_name}' created with ID: {collection_id}"
+                    )
+                else:
+                    log.msg("VT: Collection created but no ID returned")
+            else:
+                log.msg("VT: unexpected collection creation response format")
+
+        self._make_request(
+            b"POST",
+            vtUrl,
+            headers,
+            body=body,
+            process_response=process_response,
+            error_prefix="VT create collection",
+        )
+
+    def _add_to_collection(
+        self, resource_type: str, resource_id: str, resource_descriptor: str
+    ) -> defer.Deferred[Any]:
+        """
+        Add a file or URL to the configured collection
+
+        Args:
+            resource_type: 'files' or 'urls'
+            resource_id: The file hash or URL ID
+            resource_descriptor: Human-readable description for logging
+        """
+        if not self.collection_name or not self.collection_id:
+            # Collection not configured or not initialized yet
+            if self.debug and self.collection_name:
+                log.msg(
+                    f"VT: Cannot add {resource_descriptor} to collection - collection ID not yet available"
+                )
+            return defer.succeed(None)
+
+        vtUrl = f"{VTAPI_URL}collections/{self.collection_id}/{resource_type}".encode()
+
+        # Build the request based on resource type
+        if resource_type == "files":
+            item_data = {"type": "file", "id": resource_id}
+        else:  # urls
+            item_data = {"type": "url", "id": resource_id}
+
+        headers = self._build_headers(content_type="application/json")
+        body = StringProducer(json.dumps({"data": [item_data]}).encode("utf-8"))
+
+        def process_response(body_bytes):
+            if self.debug:
+                log.msg(f"VT add to collection result: {body_bytes}")
+            result = body_bytes.decode("utf8")
+            j = json.loads(result)
+
+            # Check for errors in v3 API response
+            if "error" in j:
+                log.msg(
+                    f"VT: Add to collection error - {j['error']['code']}: {j['error'].get('message', 'Unknown error')}"
+                )
+                return False
+
+            # Success
+            log.msg(
+                f"VT: Added {resource_descriptor} to collection '{self.collection_name}'"
+            )
+            return True
+
+        return self._make_request(
+            b"POST",
+            vtUrl,
+            headers,
+            body=body,
+            process_response=process_response,
+            error_prefix="VT add to collection",
+        )
+
+    # Legacy methods for backward compatibility
+    def postcomment(self, resource):
+        """Send a comment to VirusTotal for a file"""
+        return self._post_comment("files", resource, "Comment")
+
+    def postcomment_url(self, url_id):
+        """Send a comment to VirusTotal for a URL"""
+        return self._post_comment("urls", url_id, "URL comment")
 
 
 @implementer(IBodyProducer)

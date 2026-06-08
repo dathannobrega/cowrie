@@ -1,10 +1,20 @@
+# SPDX-FileCopyrightText: 2021-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 ---
 name: Tox
+permissions:
+  contents: read
 
 on:  # yamllint disable-line rule:truthy
   push:
+    branches:
+      - main
 
   pull_request:
+
+  workflow_call:
 
   workflow_dispatch:
     inputs:
@@ -15,24 +25,121 @@ on:  # yamllint disable-line rule:truthy
       tags:
         description: 'Tox'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  lint:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14-dev", "pypy-3.10", "pypy-3.11"]
-    continue-on-error: ${{ matrix.python-version == '3.14-dev' }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v6.0.2
         with:
-          python-version: ${{ matrix.python-version }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+          cache: pip
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-          python -m pip install -r requirements.txt
-          python -m pip install -r requirements-dev.txt
-          pip install tox-gh-actions
+          python -m pip -q install --upgrade pip setuptools setuptools-scm wheel
+          python -m pip -q install -e .
+          python -m pip -q install tox
+      - name: Generate version file
+        run: python -m setuptools_scm --force-write-version-files
+      - run: tox -e lint
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip -q install --upgrade pip setuptools setuptools-scm wheel
+          python -m pip -q install -e .
+          python -m pip -q install tox
+      - name: Generate version file
+        run: python -m setuptools_scm --force-write-version-files
+      - run: tox -e docs
+
+  typing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip -q install --upgrade pip setuptools setuptools-scm wheel
+          python -m pip -q install -e .
+          python -m pip -q install tox
+      - name: Generate version file
+        run: python -m setuptools_scm --force-write-version-files
+      - run: tox -e typing
+
+  test:
+    runs-on: ubuntu-latest
+    env:
+      PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.14t"]
+        experimental: [false]
+        prerelease: [false]
+        include:
+          - python-version: "3.15"
+            experimental: true
+            prerelease: true
+          - python-version: "3.15t"
+            experimental: true
+            prerelease: true
+          - python-version: "pypy-3.11"
+            experimental: true
+            prerelease: false
+    continue-on-error: ${{ matrix.experimental }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: ${{ matrix.prerelease }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip -q install --upgrade pip setuptools setuptools-scm wheel
+          python -m pip -q install -e .
+          python -m pip -q install tox tox-gh-actions coverage
+
+      - name: Generate version file
+        run: python -m setuptools_scm --force-write-version-files
+
       - name: Test with tox
         run: tox
+
+      - name: Coverage report
+        run: coverage report
+
+      - name: Upload coverage
+        if: ${{ !matrix.experimental }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: .coverage
+          include-hidden-files: true
+          retention-days: 1

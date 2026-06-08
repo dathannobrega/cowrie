@@ -1,5 +1,7 @@
-# Copyright (c) 2009 Upi Tamminen <desaster@gmail.com>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2009-2014 Upi Tamminen <desaster@gmail.com>
+# SPDX-FileCopyrightText: 2014-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 # coding=utf-8
 
@@ -11,13 +13,13 @@ import getopt
 import random
 import re
 import time
+from typing import TYPE_CHECKING, Any
 
 from twisted.internet import error, reactor
 from twisted.python import failure, log
 
 from cowrie.core import utils
 from cowrie.shell.command import HoneyPotCommand
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -94,19 +96,13 @@ commands["help"] = Command_help
 class Command_w(HoneyPotCommand):
     def call(self) -> None:
         self.write(
-            " {} up {},  1 user,  load average: 0.00, 0.00, 0.00\n".format(
-                time.strftime("%H:%M:%S"), utils.uptime(self.protocol.uptime())
-            )
+            f" {time.strftime('%H:%M:%S')} up {utils.uptime(self.protocol.uptime())},  1 user,  load average: 0.00, 0.00, 0.00\n"
         )
         self.write(
             "USER     TTY      FROM              LOGIN@   IDLE   JCPU   PCPU WHAT\n"
         )
         self.write(
-            "{:8s} pts/0    {} {}    0.00s  0.00s  0.00s w\n".format(
-                self.protocol.user.username,
-                self.protocol.clientIP[:17].ljust(17),
-                time.strftime("%H:%M", time.localtime(self.protocol.logintime)),
-            )
+            f"{self.protocol.user.username:8s} pts/0    {self.protocol.clientIP[:17].ljust(17)} {time.strftime('%H:%M', time.localtime(self.protocol.logintime))}    0.00s  0.00s  0.00s w\n"
         )
 
 
@@ -117,12 +113,7 @@ commands["w"] = Command_w
 class Command_who(HoneyPotCommand):
     def call(self) -> None:
         self.write(
-            "{:8s} pts/0        {} {} ({})\n".format(
-                self.protocol.user.username,
-                time.strftime("%Y-%m-%d", time.localtime(self.protocol.logintime)),
-                time.strftime("%H:%M", time.localtime(self.protocol.logintime)),
-                self.protocol.clientIP,
-            )
+            f"{self.protocol.user.username:8s} pts/0        {time.strftime('%Y-%m-%d', time.localtime(self.protocol.logintime))} {time.strftime('%H:%M', time.localtime(self.protocol.logintime))} ({self.protocol.clientIP})\n"
         )
 
 
@@ -165,7 +156,7 @@ class Command_echo(HoneyPotCommand):
                 string += "\n"
 
             if escape_decode:
-                data: bytes = codecs.escape_decode(string)[0]  # type: ignore
+                data: bytes = codecs.escape_decode(string)[0]
                 self.writeBytes(data)
             else:
                 self.write(string)
@@ -197,7 +188,7 @@ class Command_printf(HoneyPotCommand):
                 if s.endswith("\\c"):
                     s = s[:-2]
 
-                data: bytes = codecs.escape_decode(s)[0]  # type: ignore
+                data: bytes = codecs.escape_decode(s)[0]
                 self.writeBytes(data)
 
 
@@ -766,7 +757,7 @@ class Command_ps(HoneyPotCommand):
                     "R+   ",
                     "04:32",
                     "   0:00 ",
-                    "ps {}".format(" ".join(self.args)),
+                    f"ps {' '.join(self.args)}",
                 ),
             ]
 
@@ -826,11 +817,14 @@ commands["id"] = Command_id
 
 
 class Command_passwd(HoneyPotCommand):
+    callbacks: list[Callable]
+    passwd: str | None
+
     def start(self) -> None:
         self.write("Enter new UNIX password: ")
         self.protocol.password_input = True
         self.callbacks = [self.ask_again, self.finish]
-        self.passwd: str | None = None
+        self.passwd = None
 
     def ask_again(self, line: str) -> None:
         self.passwd = line
@@ -892,7 +886,7 @@ class Command_shutdown(HoneyPotCommand):
             )
             self.write("\n")
             self.write("The system is going down for maintenance NOW!\n")
-            reactor.callLater(3, self.finish)  # type: ignore[attr-defined]
+            reactor.callLater(3, self.finish)
         elif (
             len(self.args) > 1
             and self.args[0].strip().count("-r")
@@ -904,7 +898,7 @@ class Command_shutdown(HoneyPotCommand):
             )
             self.write("\n")
             self.write("The system is going down for reboot NOW!\n")
-            reactor.callLater(3, self.finish)  # type: ignore[attr-defined]
+            reactor.callLater(3, self.finish)
         else:
             self.write("Try `shutdown --help' for more information.\n")
             self.exit()
@@ -929,7 +923,7 @@ class Command_reboot(HoneyPotCommand):
             f"Broadcast message from root@{self.protocol.hostname} (pts/0) ({time.ctime()}):\n\n"
         )
         self.write("The system is going down for reboot NOW!\n")
-        reactor.callLater(3, self.finish)  # type: ignore[attr-defined]
+        reactor.callLater(3, self.finish)
 
     def finish(self) -> None:
         stat = failure.Failure(error.ProcessDone(status=""))
@@ -949,7 +943,7 @@ class Command_history(HoneyPotCommand):
                 return
             count = 1
             for line in self.protocol.historyLines:
-                self.write(f" {str(count).rjust(4)}  {line}\n")
+                self.write(f" {count:4d}  {line.decode()}\n")
                 count += 1
         except Exception:
             # Non-interactive shell, do nothing
@@ -962,7 +956,7 @@ commands["history"] = Command_history
 class Command_date(HoneyPotCommand):
     def call(self) -> None:
         time = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-        self.write("{}\n".format(time.strftime("%a %b %d %H:%M:%S UTC %Y")))
+        self.write(f"{time.strftime('%a %b %d %H:%M:%S UTC %Y')}\n")
 
 
 commands["/bin/date"] = Command_date
@@ -970,15 +964,17 @@ commands["date"] = Command_date
 
 
 class Command_yes(HoneyPotCommand):
+    scheduled: Any
+
     def start(self) -> None:
         self.y()
 
     def y(self) -> None:
         if self.args:
-            self.write("{}\n".format(" ".join(self.args)))
+            self.write(f"{' '.join(self.args)}\n")
         else:
             self.write("y\n")
-        self.scheduled = reactor.callLater(0.01, self.y)  # type: ignore[attr-defined]
+        self.scheduled = reactor.callLater(0.01, self.y)
 
     def handle_CTRL_C(self) -> None:
         self.scheduled.cancel()
@@ -1031,7 +1027,7 @@ class Command_php(HoneyPotCommand):
         "\n"
     )
 
-    VERSION = "PHP 5.3.5 (cli)\n" "Copyright (c) 1997-2010 The PHP Group\n"
+    VERSION = "PHP 5.3.5 (cli)\nCopyright (c) 1997-2010 The PHP Group\n"
 
     def start(self) -> None:
         if self.args:
@@ -1082,7 +1078,7 @@ class Command_set(HoneyPotCommand):
     # This will show ALL environ vars, not only the global ones
     # With enhancements it should work like env when -o posix is used
     def call(self) -> None:
-        for i in sorted(list(self.environ.keys())):
+        for i in sorted(self.environ):
             self.write(f"{i}={self.environ[i]}\n")
 
 
@@ -1110,8 +1106,6 @@ commands["/bin/chown"] = Command_nop
 commands["chown"] = Command_nop
 commands["/bin/chgrp"] = Command_nop
 commands["chgrp"] = Command_nop
-commands["/usr/bin/chattr"] = Command_nop
-commands["chattr"] = Command_nop
 commands[":"] = Command_nop
 commands["do"] = Command_nop
 commands["done"] = Command_nop

@@ -1,5 +1,6 @@
-# Copyright (c) 2015 Michel Oosterhof <michel@oosterhof.net>
-# All rights reserved.
+# SPDX-FileCopyrightText: 2017-2025 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 """
 This module ...
@@ -24,7 +25,7 @@ class Command_ulimit(HoneyPotCommand):
     def call(self) -> None:
         # Parse options or display no files
         try:
-            opts, args = getopt.getopt(self.args, "SHacdfilmnpqstuvx")
+            opts, _args = getopt.getopt(self.args, "SHacdfilmnpqstuvx")
         except getopt.GetoptError as err:
             self.errorWrite(f"-bash: ulimit: {err}\n")
             self.write("ulimit: usage: ulimit [-SHacdfilmnpqstuvx] [limit]\n")

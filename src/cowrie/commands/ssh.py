@@ -1,5 +1,7 @@
-# Copyright (c) 2009 Upi Tamminen <desaster@gmail.com>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2009-2012 Upi Tamminen <desaster@gmail.com>
+# SPDX-FileCopyrightText: 2014-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 
 from __future__ import annotations
@@ -9,13 +11,13 @@ import hashlib
 import re
 import socket
 import time
+from typing import TYPE_CHECKING
 
 from twisted.internet import reactor
 from twisted.python import log
 
 from cowrie.core.config import CowrieConfig
 from cowrie.shell.command import HoneyPotCommand
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -121,7 +123,7 @@ class Command_ssh(HoneyPotCommand):
         self.protocol.password_input = True
 
     def wait(self, line: str) -> None:
-        reactor.callLater(2, self.finish, line)  # type: ignore[attr-defined]
+        reactor.callLater(2, self.finish, line)
 
     def finish(self, line: str) -> None:
         self.pause = False

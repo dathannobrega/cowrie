@@ -14,11 +14,12 @@ log/
 .eggs/
 .envrc
 .direnv/
-.pyre/
+.pyre*
 .pytype/
 __pycache__/
 *.py[cod]
 *env/
+src/cowrie/_version.py
 src/twisted/plugins/dropin.cache
 .DS_Store
 _trial_temp
@@ -26,3 +27,4 @@ _trial_temp
 .pydevproject
 .idea/
 .tox
+.coverage

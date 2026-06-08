@@ -1,6 +1,6 @@
-# -*- test-case-name: cowrie.test.utils -*-
-# Copyright (c) 2017 Michel Oosterhof <michel@oosterhof.net>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2018-2025 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ def logger():
     if logtype == "rotating":
         cowrielog = CowrieDailyLogFile("cowrie.log", directory)
     elif logtype == "plain":
-        cowrielog = open(Path(directory, "plain.log"), "w", encoding="utf-8")
+        cowrielog = open(Path(directory, "cowrie.log"), "a", encoding="utf-8")
     else:
         raise ValueError
 

@@ -1,9 +1,14 @@
+# SPDX-FileCopyrightText: 2019 Guilherme Borges <guilhermerosasborges@gmail.com>
+# SPDX-FileCopyrightText: 2021-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from twisted.conch.ssh import channel, common, connection, transport, userauth
-from twisted.internet import defer, protocol
-from twisted.internet import reactor
+from twisted.internet import defer, protocol, reactor
 
 if TYPE_CHECKING:
     from twisted.internet.interfaces import IAddress
@@ -90,7 +95,7 @@ class ClientCommandFactory(protocol.ClientFactory):
         self.done_deferred = done_deferred
         self.callback = callback
 
-    def buildProtocol(self, addr: IAddress) -> ClientCommandTransport:
+    def buildProtocol(self, addr: IAddress | None) -> ClientCommandTransport:
         return ClientCommandTransport(
             self.username,
             self.password,

@@ -1,4 +1,6 @@
-# Copyright (c) 2016 Michel Oosterhof <michel@oosterhof.net>
+# SPDX-FileCopyrightText: 2016-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 """
 This module contains code to handling saving of honeypot artifacts
@@ -25,7 +27,7 @@ from __future__ import annotations
 import hashlib
 import os
 import tempfile
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from twisted.python import log
 

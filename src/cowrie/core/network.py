@@ -1,8 +1,12 @@
-from collections.abc import Generator
-import ipaddress
-from typing import Optional, Union
+# SPDX-FileCopyrightText: 2025-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
-from twisted.internet.defer import inlineCallbacks, Deferred
+import ipaddress
+import re
+from collections.abc import Generator
+
+from twisted.internet.defer import Deferred, inlineCallbacks
 from twisted.names import client, dns
 from twisted.python import log
 
@@ -18,12 +22,22 @@ BLOCKED_IPS = [
     "224.0.0.0/4",  # Multicast addresses
     "240.0.0.0/4",  # Reserved addresses
     "255.255.255.255",  # Limited broadcast address
+    "::1",  # IPv6 loopback range
 ]
+
+# Valid TCP/UDP port range: 1-65535
+# https://www.debuggex.com/r/jjEFZZQ34aPvCBMA
+PORT_PATTERN = re.compile(r"^([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$")
+
+
+def is_valid_port(port: str) -> bool:
+    """Check if port string is a valid TCP/UDP port number (1-65535)"""
+    return bool(PORT_PATTERN.match(port))
 
 
 def is_ip_address(
     address: str,
-) -> Optional[Union[ipaddress.IPv4Address, ipaddress.IPv6Address]]:
+) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
     """
     Returns an IPv4 or IPv6 address if the string is a valid IP, otherwise returns None.
     """
@@ -37,7 +51,7 @@ def is_ip_address(
 @inlineCallbacks
 def resolve_cname(
     address: str, visited: set[str]
-) -> Generator[Deferred, None, Optional[str]]:
+) -> Generator[Deferred, None, str | None]:
     """
     Resolve a CNAME record recursively and return the final resolved IP address (either IPv4 or IPv6)
     or None if not resolvable. `visited` is a set that tracks the domains we've already resolved to prevent cycles.

@@ -1,9 +1,14 @@
+# SPDX-FileCopyrightText: 2019 Guilherme Borges <guilhermerosasborges@gmail.com>
+# SPDX-FileCopyrightText: 2021-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
+
+from twisted.internet import defer
 
 from backend_pool.ssh_exec import execute_ssh
 from backend_pool.telnet_exec import execute_telnet
-
-from twisted.internet import defer
 
 
 class ProxyTestCommand:

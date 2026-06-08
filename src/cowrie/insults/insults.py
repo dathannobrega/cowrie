@@ -1,5 +1,7 @@
-# Copyright (c) 2009-2014 Upi Tamminen <desaster@gmail.com>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2009-2014 Upi Tamminen <desaster@gmail.com>
+# SPDX-FileCopyrightText: 2015-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 from __future__ import annotations
 
@@ -24,7 +26,7 @@ class LoggingServerProtocol(insults.ServerProtocol):
 
     ttylogPath: str = CowrieConfig.get("honeypot", "ttylog_path", fallback=".")
     downloadPath: str = CowrieConfig.get("honeypot", "download_path", fallback=".")
-    ttylogEnabled: bool = CowrieConfig.getboolean("honeypot", "ttylog", fallback=True)
+    ttylogEnabled: bool = CowrieConfig.getboolean("honeypot", "ttylog", fallback=False)
     bytesReceivedLimit: int = CowrieConfig.getint(
         "honeypot", "download_limit_size", fallback=0
     )
@@ -61,29 +63,18 @@ class LoggingServerProtocol(insults.ServerProtocol):
         self.startTime = time.time()
 
         if self.ttylogEnabled:
-            self.ttylogFile = "{}/{}-{}-{}{}.log".format(
-                self.ttylogPath,
-                time.strftime("%Y%m%d-%H%M%S"),
-                transportId,
-                channelId,
-                self.type,
-            )
+            self.ttylogFile = f"{self.ttylogPath}/{time.strftime('%Y%m%d-%H%M%S')}-{transportId}-{channelId}{self.type}.log"
             ttylog.ttylog_open(self.ttylogFile, self.startTime)
             self.ttylogOpen = True
             self.ttylogSize = 0
 
-        self.stdinlogFile = "{}/{}-{}-{}-stdin.log".format(
-            self.downloadPath,
-            time.strftime("%Y%m%d-%H%M%S"),
-            transportId,
-            channelId,
-        )
+        self.stdinlogFile = f"{self.downloadPath}/{time.strftime('%Y%m%d-%H%M%S')}-{transportId}-{channelId}-stdin.log"
 
         if self.type == "e":
             self.stdinlogOpen = True
             # log the command into ttylog
             if self.ttylogEnabled:
-                (sess, cmd) = self.protocolArgs
+                (_sess, cmd) = self.protocolArgs
                 ttylog.ttylog_write(
                     self.ttylogFile, len(cmd), ttylog.TYPE_INTERACT, time.time(), cmd
                 )

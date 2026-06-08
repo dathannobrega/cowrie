@@ -1,5 +1,216 @@
+.. SPDX-FileCopyrightText: 2014-2025 Michel Oosterhof <michel@oosterhof.net>
+..
+.. SPDX-License-Identifier: BSD-3-Clause
+
 Release Notes
 #############
+
+Release 3.0.0
+*************
+
+**BREAKING CHANGES - ACTION REQUIRED:**
+
+* **State directory layout is now cwd-driven.** ``cowrie start`` no
+  longer ``chdir``\s to a script-derived "root" path. The current
+  working directory is the cowrie state directory: ``./etc/cowrie.cfg``
+  is the config, ``./var/log/cowrie/`` holds logs, ``./var/run/`` holds
+  the PID file. Run all cowrie commands (``start``, ``stop``, ``restart``,
+  ``status``) from the same directory.
+
+* **New ``cowrie init`` command.** Pip-install operators run ``cowrie
+  init`` once in their chosen state directory to materialise
+  ``./etc/cowrie.cfg`` from the bundled template and create the
+  ``var/{log/cowrie,lib/cowrie,run}`` skeleton. Source-checkout users
+  unaffected — the repo root counts as initialised via
+  ``src/cowrie/data/etc/cowrie.cfg.dist``.
+
+* **``cowrie start`` refuses to run without an init marker.** Looks
+  for one of ``./etc/cowrie.cfg``, ``./etc/cowrie.cfg.dist``, or
+  ``./src/cowrie/data/etc/cowrie.cfg.dist``. Prevents accidentally
+  polluting the wrong directory with state files.
+
+* **Top-level ``honeyfs/`` directory removed.** Its contents are now
+  embedded in ``src/cowrie/data/fs.pickle`` as ``A_CONTENTS`` bytes.
+  Operators with local customisations: keep your honeyfs files in a
+  directory of your choice and set ``[honeypot] contents_path`` to it
+  in ``cowrie.cfg``; per-file overrides still cascade on top of the
+  bundled defaults.
+
+* **Bundled ``cowrie.cfg.dist`` moved into the package.** The
+  template is now at ``src/cowrie/data/etc/cowrie.cfg.dist`` and is
+  loaded as the defaults layer automatically. Your operator config
+  (``etc/cowrie.cfg``) only needs to contain the keys you want to
+  override.
+
+* **``[honeypot] data_path`` config key removed.** Settings that
+  used ``${honeypot:data_path}/...`` (``filesystem``, ``processes``,
+  ``config_files_path``) now read their bundled defaults from the
+  package directly when left unset. Operators who set ``data_path``
+  in their cowrie.cfg should set each derived path individually
+  instead.
+
+* **``[honeypot] contents_path`` is now unset by default.** Previously
+  defaulted to ``honeyfs`` (the removed top-level directory). Leaving
+  it unset serves all file contents from the pickle. Set it only when
+  you want per-file overrides.
+
+**CONFIGURATION CHANGES:**
+
+* Bundled ``cowrie.cfg.dist`` has ``contents_path``, ``filesystem``,
+  and ``processes`` commented out (each documents how to override).
+* ``data_path`` removed from cfg.dist.
+
+**DEPENDENCIES:**
+
+* ``tftpy`` removed from runtime dependencies. The TFTP client
+  (``cowrie/commands/tftp.py``) uses a Twisted ``DatagramProtocol``
+  implementation; tftpy was never imported.
+
+**INTERNAL:**
+
+* New ``cowrie/shell/honeyfs.py`` module owns the per-process pickle
+  cache. ``HoneyPotFilesystem`` instances now share a single
+  ``pickle.load`` via ``honeyfs.get_tree()`` (deepcopied per session)
+  instead of re-reading from disk on every connection.
+* New ``cowrie/core/resources.py`` provides ``read_data_bytes`` and
+  ``open_data_binary`` for accessing bundled ``cowrie.data``
+  resources via ``importlib.resources``.
+* ``createfs.py`` grew an ``EMBED_PATHS`` constant — paths whose
+  bytes are baked into ``A_CONTENTS`` during the recursive walk.
+* ``fsctl`` gained an ``embed <local-dir>`` command for bulk-loading
+  file contents into an already-built pickle.
+* ``Passwd`` and ``Group`` classes moved from class-body load to
+  instance ``__init__``.
+* ``backend_pool`` XML config templates now use a bundled-data cascade
+  matching the honeyfs pattern. ``[backend_pool] config_files_path``
+  is optional; unset falls through to bundled defaults via
+  ``importlib.resources``.
+* CI smoke tests for PyPI packages replaced the no-op ``twistd cowrie``
+  invocation with checks that verify the entry point, bundled resources,
+  ``cowrie init`` output, and the init-marker guard on ``cowrie start``.
+
+
+Releases 2.9.1 -- 2.9.20
+*************************
+
+**NEW FEATURES:**
+
+* **New shell commands**: ``cut``.
+* **IPv6 support**: ``ifconfig`` and ``netstat`` now show Global Unicast
+  Addresses; ``get_endpoints_from_section`` detects IPv6 listen addresses.
+* **LLM proxy support**: the LLM backend reads ``HTTP_PROXY`` /
+  ``HTTPS_PROXY`` environment variables for outbound requests.
+* **LLM Anthropic provider**: Claude can now be used as an LLM backend
+  alongside OpenAI. The context prompt sent to the model is configurable.
+* **Shell script execution**: scripts created via output redirection
+  (e.g. ``cat > script.sh``) can now be executed.
+* **CVE-2026-24061 detection**: telnet NEW-ENVIRON exploit attempts are
+  detected and logged; the honeypot emulates the vulnerable response.
+* **OS fingerprint update**: default emulated OS bumped to Debian 12 /
+  kernel 6.1.
+* **SPDX / REUSE compliance**: all source files carry SPDX license
+  headers; ``reuse lint`` passes in CI.
+
+**BUG FIXES:**
+
+* **SSRF protection bypass** in ``ftpget``, ``tftp``, and ``nc`` commands
+  (reserved IP range checks were bypassable).
+* ``chmod --help`` and ``--version`` were broken.
+* ``chattr`` command was shadowed by a no-op stub.
+* ``wget`` saved downloaded files to ``/`` instead of the session's cwd.
+* ``playlog`` now shows output for exec sessions.
+* File-descriptor redirection parsing handles more edge cases.
+* Tab completion no longer errors on non-existing directories.
+* ``backend_pool`` NAT errors in remote mode when the client protocol
+  was not yet initialised or already closed.
+* Telnet infinite recursion when ``onResult`` callback is ``None``.
+* ``nc`` command: more realistic output and abuse-protection limits.
+
+**INFRASTRUCTURE:**
+
+* Docker base image upgraded to Debian 13 (trixie) / Python 3.13.
+* Twisted bumped to 26.4.0 with stricter typing adopted.
+* Malshare and Cuckoo output plugins ported from ``requests`` to ``treq``.
+* Weekly automated release workflow added.
+* Bundled ``fs.pickle`` now embeds file contents (``A_CONTENTS`` bytes).
+
+
+Release 2.9.0
+*************
+
+**NEW FEATURES:**
+
+* **LLM Backend**: New experimental backend that uses Large Language Models (such as OpenAI's GPT) to generate realistic shell responses. Instead of static command emulation, the LLM dynamically generates output for any command, making the honeypot more convincing and capable of handling unexpected inputs. See the `LLM documentation <https://docs.cowrie.org/en/latest/LLM.html>`_ for setup instructions.
+
+**CONFIGURATION CHANGES:**
+
+* New ``[llm]`` configuration section for LLM backend settings including API key, model selection, and response parameters.
+
+
+Release 2.7.0
+*************
+
+**BREAKING CHANGES - ACTION REQUIRED:**
+
+* Install Cowrie into your virtual environment with `pip install -e .` 
+* **bin/ directory removed**: Scripts `asciinema`, `createfs`, `fsctl`, and `playlog` are no longer called from the `bin/` directory. 
+* **Python 3.9 no longer supported**: Minimum Python version is now 3.10.
+* **SQL schema update required**: If using MySQL/SQLite databases, run the migration script `docs/sql/update16.sql` to extend IP address fields for IPv6 support (VARCHAR length increased to 61 characters).
+* **SSH-DSS key support removed**: The deprecated ssh-dss algorithm is no longer supported for improved security. Remove ssh-dss configuration if you use it.
+
+**NEW FEATURES:**
+
+* **New Output Plugins**:
+  * PostgreSQL output plugin with automatic reconnection support
+  * Prometheus metrics output plugin for monitoring and alerting
+* **New Shell Commands**:
+  * `find` command with basic options for file searching
+  * `dig` command for DNS lookups
+  * `git` command for version control simulation
+  * `curl` command now supports HEAD requests with `-I` option
+* **Enhanced Security**:
+  * Network blocking for outbound connections from wget/curl/nc to reserved IP ranges
+  * Null byte password protection to prevent authentication bypasses
+  * Updated SSH algorithms and key management for better security posture
+* **Proxy Mode Improvements**:
+  * SFTP file transfers now logged and captured in proxy mode
+  * Better SSH factory handling for improved stability
+
+**CONFIGURATION CHANGES:**
+
+* New configuration options available for:
+  * PostgreSQL output plugin settings
+  * Prometheus metrics endpoint configuration
+  * Network blocking controls for command simulation
+
+**INFRASTRUCTURE UPDATES:**
+
+* **Docker**:
+  * Improved local build support
+  * Container signing with Cosign for supply chain security
+  * Updated base images and metadata
+* **Build System**:
+  * Migrated to setuptools-scm for automatic version management
+  * PyPI package publishing now automated as trial for future development
+* **Dependencies**:
+  * Twisted updated to 25.5.0
+  * Elasticsearch client updated to 9.x
+  * Various security updates across all dependencies
+
+**IMPROVED FEATURES:**
+
+* Enhanced MISP output plugin with overcuriosity protection and better threat intelligence integration
+* Simplified Slack output formatting for better readability
+* Better shell command substitution and subshell execution
+* Improved error handling in wget with explicit timeouts
+* ECS-compliant Logstash configuration template
+* Enhanced history handling in shell sessions
+
+**DEVELOPMENT:**
+
+* Added Python 3.14 development version support
+* Added PyPy 3.11 support
+* Improved test coverage and CI/CD pipelines
 
 Release 2.6.0
 *************

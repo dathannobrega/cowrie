@@ -1,14 +1,18 @@
+# SPDX-FileCopyrightText: 2019 Guilherme Borges <guilhermerosasborges@gmail.com>
+# SPDX-FileCopyrightText: 2021-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Based on https://github.com/fjogstad/twisted-telnet-client
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 
 from twisted.conch.telnet import StatefulTelnetProtocol, TelnetTransport
-from twisted.internet import defer
-from twisted.internet import reactor
+from twisted.internet import defer, reactor
 from twisted.internet.protocol import ClientFactory
 from twisted.python import log
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from twisted.internet.interfaces import IAddress
@@ -77,7 +81,7 @@ class TelnetClient(StatefulTelnetProtocol):
 
         # start countdown to command done (when reached, consider the output was completely received and close)
         if not self.done_callback:
-            self.done_callback = reactor.callLater(0.5, self.close)  # type: ignore[attr-defined]
+            self.done_callback = reactor.callLater(0.5, self.close)
         else:
             self.done_callback.reset(0.5)
 
@@ -115,7 +119,7 @@ class TelnetFactory(ClientFactory):
         self.done_deferred = done_deferred
         self.callback = callback
 
-    def buildProtocol(self, addr: IAddress) -> TelnetTransport:
+    def buildProtocol(self, addr: IAddress | None) -> TelnetTransport:
         transport = TelnetTransport(TelnetClient)
         transport.factory = self
         return transport

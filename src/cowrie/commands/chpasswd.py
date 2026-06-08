@@ -1,6 +1,8 @@
-# Copyright (c) 2019 Nuno Novais <nuno@noais.me>
-# All rights reserved.
-# All rights given to Cowrie project
+# SPDX-FileCopyrightText: 2019 NunoNovais <nuno@novais.me>
+# SPDX-FileCopyrightText: 2019 Nuno Novais <nuno@noais.me>
+# SPDX-FileCopyrightText: 2020-2025 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 """
 This module contains the chpasswd commnad
@@ -40,7 +42,7 @@ class Command_chpasswd(HoneyPotCommand):
         try:
             for line in contents.split(b"\n"):
                 if len(line):
-                    u, p = line.split(b":")
+                    _u, p = line.split(b":")
                     if not len(p):
                         self.write(f"chpasswd: line {c}: missing new password\n")
                     else:
@@ -57,7 +59,7 @@ class Command_chpasswd(HoneyPotCommand):
 
     def start(self) -> None:
         try:
-            opts, args = getopt.getopt(
+            opts, _args = getopt.getopt(
                 self.args,
                 "c:ehmr:s:",
                 ["crypt-method", "encrypted", "help", "md5", "root", "sha-rounds"],

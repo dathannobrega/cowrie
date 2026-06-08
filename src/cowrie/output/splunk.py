@@ -1,4 +1,6 @@
-# Copyright (c) 2015 Michel Oosterhof <michel@oosterhof.net>
+# SPDX-FileCopyrightText: 2015-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 """
 Splunk HTTP Event Collector (HEC) Connector.
@@ -12,13 +14,12 @@ import json
 from io import BytesIO
 from typing import Any
 
-from zope.interface import implementer
-
 from twisted.internet import reactor, ssl
 from twisted.python import log
 from twisted.web import client, http_headers
 from twisted.web.client import FileBodyProducer
 from twisted.web.iweb import IPolicyForHTTPS
+from zope.interface import implementer
 
 import cowrie.core.output
 from cowrie.core.config import CowrieConfig
@@ -49,7 +50,7 @@ class Output(cowrie.core.output.Output):
         pass
 
     def write(self, event):
-        for i in list(event.keys()):
+        for i in list(event):
             # Remove twisted 15 legacy keys
             if i.startswith("log_"):
                 del event[i]
@@ -107,7 +108,7 @@ class Output(cowrie.core.output.Output):
 
         def processResult(result):
             j = json.loads(result)
-            log.msg("SplunkHEC response: {}".format(j["text"]))
+            log.msg(f"SplunkHEC response: {j['text']}")
 
         d.addCallback(cbResponse)
         d.addErrback(cbError)

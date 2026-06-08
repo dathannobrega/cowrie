@@ -1,7 +1,12 @@
+# SPDX-FileCopyrightText: 2019 Mehtab Zafar <mehtab.zafar98@gmail.com>
+# SPDX-FileCopyrightText: 2019-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
 
-from functools import lru_cache
 import ipaddress
+from functools import lru_cache
 
 from twisted.internet import defer
 from twisted.names import client, error

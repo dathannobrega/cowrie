@@ -1,30 +1,6 @@
-# Copyright (c) 2015 Michel Oosterhof <michel@oosterhof.net>
-# All rights reserved.
+# SPDX-FileCopyrightText: 2015-2026 Michel Oosterhof <michel@oosterhof.net>
 #
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions
-# are met:
-#
-# 1. Redistributions of source code must retain the above copyright
-#    notice, this list of conditions and the following disclaimer.
-# 2. Redistributions in binary form must reproduce the above copyright
-#    notice, this list of conditions and the following disclaimer in the
-#    documentation and/or other materials provided with the distribution.
-# 3. The names of the author(s) may not be used to endorse or promote
-#    products derived from this software without specific prior written
-#    permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE AUTHORS ``AS IS'' AND ANY EXPRESS OR
-# IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
-# OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-# IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY DIRECT, INDIRECT,
-# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
-# AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-# OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
-# SUCH DAMAGE.
+# SPDX-License-Identifier: BSD-3-Clause
 
 from __future__ import annotations
 
@@ -33,8 +9,8 @@ import re
 import socket
 import time
 from os import environ
-from typing import Any
 from re import Pattern
+from typing import Any
 
 from twisted.internet import reactor
 from twisted.logger import formatTime
@@ -69,21 +45,20 @@ def convert(data):
     """
     This converts a nested dictionary with bytes in it to string
     """
-    if isinstance(data, str):
-        return data
-    if isinstance(data, dict):
-        return {convert(key): convert(value) for key, value in list(data.items())}
-    if isinstance(data, dict):
-        return {convert(key): convert(value) for key, value in list(data.items())}
-    if isinstance(data, list):
-        return [convert(element) for element in data]
-    if isinstance(data, bytes):
-        try:
-            string = data.decode("utf-8")
-        except UnicodeDecodeError:
-            string = repr(data)
-        return string
-    return data
+    match data:
+        case str():
+            return data
+        case dict():
+            return {convert(key): convert(value) for key, value in data.items()}
+        case list():
+            return [convert(element) for element in data]
+        case bytes():
+            try:
+                return data.decode("utf-8")
+            except UnicodeDecodeError:
+                return repr(data)
+        case _:
+            return data
 
 
 class Output(metaclass=abc.ABCMeta):
@@ -105,8 +80,9 @@ class Output(metaclass=abc.ABCMeta):
         self.sensor: str = CowrieConfig.get(
             "honeypot", "sensor_name", fallback=socket.gethostname()
         )
-        self.timeFormat: str
+        self.uuid: str = CowrieConfig.get("honeypot", "uuid", fallback="unknown")
 
+        self.timeFormat: str
         # use Z for UTC (Zulu) time, it's shorter.
         if "TZ" in environ and environ["TZ"] == "UTC":
             self.timeFormat = "%Y-%m-%dT%H:%M:%S.%fZ"
@@ -114,7 +90,7 @@ class Output(metaclass=abc.ABCMeta):
             self.timeFormat = "%Y-%m-%dT%H:%M:%S.%f%z"
 
         # Event trigger so that stop() is called by the reactor when stopping
-        reactor.addSystemEventTrigger("before", "shutdown", self.stop)  # type: ignore
+        reactor.addSystemEventTrigger("before", "shutdown", self.stop)
 
         self.start()
 
@@ -181,6 +157,7 @@ class Output(metaclass=abc.ABCMeta):
 
         ev: dict[str, any] = convert(event)  # type: ignore
         ev["sensor"] = self.sensor
+        ev["uuid"] = self.uuid
 
         ev.pop("isError", None)
 
@@ -236,6 +213,13 @@ class Output(metaclass=abc.ABCMeta):
             self.ips[sessionno] = ev["src_ip"]
         else:
             ev["session"] = self.sessions[sessionno]
+
+        if sessionno[0] == "S":
+            ev["protocol"] = "ssh"
+        elif sessionno[0] == "T":
+            ev["protocol"] = "telnet"
+        else:
+            ev["protocol"] = "unknown"
 
         self.write(ev)
 

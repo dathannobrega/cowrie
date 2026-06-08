@@ -1,10 +1,13 @@
-# Copyright (c) 2013 Bas Stottelaar <basstottelaar [AT] gmail [DOT] com>
+# SPDX-FileCopyrightText: 2013 Bas Stottelaar <basstottelaar [AT] gmail [DOT] com>
+# SPDX-FileCopyrightText: 2015-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 from __future__ import annotations
 
 import optparse
-
 from typing import Any
+
 from typing_extensions import Never
 
 from cowrie.shell.command import HoneyPotCommand
@@ -157,7 +160,7 @@ class Command_iptables(HoneyPotCommand):
 
         # Parse options or display no files
         try:
-            (opts, args) = parser.parse_args(list(self.args))
+            (opts, _args) = parser.parse_args(list(self.args))
         except OptionParsingError:
             self.bad_argument(self.args[0])
             return
@@ -180,7 +183,7 @@ class Command_iptables(HoneyPotCommand):
             self.flush("" if opts.flush else opts.flush)
             return
         elif opts.list:
-            self.list("" if opts.list else opts.list)
+            self.list_chains("" if opts.list else opts.list)
             return
         elif opts.list_rules:
             self.list_rules("" if opts.list_rules else opts.list_rules)
@@ -243,7 +246,7 @@ class Command_iptables(HoneyPotCommand):
     def is_valid_table(self, table: str) -> bool:
         if self.user_is_root():
             # Verify table existence
-            if table not in self.tables.keys():
+            if table not in self.tables:
                 self.write(
                     f"""{Command_iptables.APP_NAME}: can\'t initialize iptables table \'{table}\': Table does not exist (do you need to insmod?)
 Perhaps iptables or your kernel needs to be upgraded.\n"""
@@ -259,7 +262,7 @@ Perhaps iptables or your kernel needs to be upgraded.\n"""
 
     def is_valid_chain(self, chain: str) -> bool:
         # Verify chain existence. Requires valid table first
-        if chain not in list(self.current_table.keys()):
+        if chain not in self.current_table:
             self.write(
                 f"{Command_iptables.APP_NAME}: No chain/target/match by that name.\n"
             )
@@ -361,7 +364,7 @@ Options:
 
                 chains = [chain]
             else:
-                chains = list(self.current_table.keys())
+                chains = list(self.current_table)
 
             # Output buffer
             output = []
@@ -370,12 +373,12 @@ Options:
                 output.append(f"-P {chain} ACCEPT")
 
             # Done
-            self.write("{}\n".format("\n".join(output)))
+            self.write("\n".join(output) + "\n")
             self.exit()
         else:
             self.no_permission()
 
-    def list(self, chain: str) -> None:
+    def list_chains(self, chain: str) -> None:
         """
         List current rules
         """
@@ -388,7 +391,7 @@ Options:
 
                 chains = [chain]
             else:
-                chains = list(self.current_table.keys())
+                chains = list(self.current_table)
 
             # Output buffer
             output = []
@@ -410,7 +413,7 @@ Options:
                 output.append("\n".join(chain_output))
 
             # Done
-            self.write("{}\n".format("\n\n".join(output)))
+            self.write("\n\n".join(output) + "\n")
             self.exit()
         else:
             self.no_permission()
@@ -428,7 +431,7 @@ Options:
 
                 chains = [chain]
             else:
-                chains = list(self.current_table.keys())
+                chains = list(self.current_table)
 
             # Flush
             for chain in chains:

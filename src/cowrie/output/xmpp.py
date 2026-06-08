@@ -1,16 +1,21 @@
+# SPDX-FileCopyrightText: 2018 Dave Germiquet <davegermiquet@trulycanadian.net>
+# SPDX-FileCopyrightText: 2018-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
+
 import json
 import string
 from random import choice
-
-from wokkel import muc
-from wokkel.client import XMPPClient
-from wokkel.xmppim import AvailablePresence
 
 from twisted.application import service
 from twisted.python import log
 from twisted.words.protocols.jabber import jid
 from twisted.words.protocols.jabber.jid import JID
+from wokkel import muc
+from wokkel.client import XMPPClient
+from wokkel.xmppim import AvailablePresence
 
 import cowrie.core.output
 from cowrie.core.config import CowrieConfig
@@ -67,15 +72,15 @@ class Output(cowrie.core.output.Output):
         password = CowrieConfig.get("output_xmpp", "password")
         muc = CowrieConfig.get("output_xmpp", "muc")
         resource = "".join([choice(string.ascii_letters) for i in range(8)])
-        jid = user + "/" + resource
+        jidstr = user + "/" + resource
         application = service.Application("honeypot")
-        self.run(application, jid, password, JID(None, [muc, server, None]), server)
+        self.run(application, jidstr, password, JID(None, [muc, server, None]), server)
 
     def run(self, application, jidstr, password, muc, server):
         self.xmppclient = XMPPClient(JID(jidstr), password)
         if CowrieConfig.getboolean("output_xmpp", "debug", fallback=False):
             self.xmppclient.logTraffic = True
-        (user, host, resource) = jid.parse(jidstr)
+        (user, _host, resource) = jid.parse(jidstr)
         self.muc = XMPPLoggerProtocol(muc, server, user + "-" + resource)
         self.muc.setHandlerParent(self.xmppclient)
         self.xmppclient.setServiceParent(application)
@@ -83,7 +88,7 @@ class Output(cowrie.core.output.Output):
         self.xmppclient.startService()
 
     def write(self, event):
-        for i in list(event.keys()):
+        for i in list(event):
             # Remove twisted 15 legacy keys
             if i.startswith("log_"):
                 del event[i]

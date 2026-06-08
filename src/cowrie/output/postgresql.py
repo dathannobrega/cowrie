@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2025 Erik Belak
+# SPDX-FileCopyrightText: 2025 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
 
 from psycopg2 import OperationalError
@@ -45,7 +50,9 @@ class Output(cowrie.core.output.Output):
     debug: bool = False
 
     def start(self):
-        self.debug = CowrieConfig.getboolean("output_postgresql", "debug", fallback=False)
+        self.debug = CowrieConfig.getboolean(
+            "output_postgresql", "debug", fallback=False
+        )
         port = CowrieConfig.getint("output_postgresql", "port", fallback=5432)
 
         try:

@@ -1,5 +1,7 @@
-# Copyright (c) 2010 Upi Tamminen <desaster@gmail.com>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2010 Upi Tamminen <desaster@gmail.com>
+# SPDX-FileCopyrightText: 2018-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 """
 cat command
@@ -7,7 +9,6 @@ cat command
 """
 
 from __future__ import annotations
-
 
 import getopt
 

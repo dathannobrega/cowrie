@@ -1,15 +1,16 @@
-# -*- test-case-name: cowrie.test.protocol -*-
-# Copyright (c) 2009-2014 Upi Tamminen <desaster@gmail.com>
-# See the COPYRIGHT file for more information
+# SPDX-FileCopyrightText: 2009-2014 Upi Tamminen <desaster@gmail.com>
+# SPDX-FileCopyrightText: 2014-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
 
 from __future__ import annotations
 
-from importlib import import_module
-import os
 import socket
 import sys
 import time
 import traceback
+from importlib import import_module
+from pathlib import Path
 from typing import ClassVar
 
 from twisted.conch import recvline
@@ -21,6 +22,7 @@ from twisted.python import failure, log
 
 import cowrie.commands
 from cowrie.core.config import CowrieConfig
+from cowrie.core.resources import read_data_bytes
 from cowrie.shell import command, honeypot
 
 
@@ -56,6 +58,7 @@ class HoneyPotBaseProtocol(insults.TerminalProtocol, TimeoutMixin):
         self.realClientIP: str
         self.realClientPort: int
         self.kippoIP: str
+        self.kippoIPv6: str = ""
         self.clientIP: str
         self.sessionno: int
         self.factory = None
@@ -113,6 +116,19 @@ class HoneyPotBaseProtocol(insults.TerminalProtocol, TimeoutMixin):
             except Exception:
                 self.kippoIP = "192.168.0.1"
 
+        # IPv6 GUA of server in user visible reports (can be fake or real)
+        if CowrieConfig.has_option("honeypot", "internet_facing_ipv6"):
+            self.kippoIPv6 = CowrieConfig.get("honeypot", "internet_facing_ipv6")
+        else:
+            try:
+                with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as s:
+                    s.connect(("2001:4860:4860::8888", 80))  # NOSONAR - probe target to detect host GUA, not a secret
+                    addr = s.getsockname()[0]
+                    # Only use GUA, not link-local
+                    self.kippoIPv6 = addr if not addr.lower().startswith("fe80") else ""
+            except Exception:
+                self.kippoIPv6 = ""
+
     def timeoutConnection(self) -> None:
         """
         this logs out when connection times out
@@ -135,14 +151,75 @@ class HoneyPotBaseProtocol(insults.TerminalProtocol, TimeoutMixin):
         self.user = None
         self.environ = None
 
-    def txtcmd(self, txt: str) -> object:
+    def txtcmd(self, txt: bytes) -> object:
         class Command_txtcmd(command.HoneyPotCommand):
             def call(self):
-                log.msg(f'Reading txtcmd from "{txt}"')
-                with open(txt, encoding="utf-8") as f:
-                    self.write(f.read())
+                self.writeBytes(txt)
 
         return Command_txtcmd
+
+    def scriptcmd(self, path: str) -> object:
+        """Return a command class that executes a shell script from the virtual filesystem."""
+        import re
+
+        shebang_re = re.compile(r"^#!\s*/bin/(ba|a)?sh")
+        max_depth = 5
+
+        class Command_scriptcmd(command.HoneyPotCommand):
+            def call(self_cmd):
+                depth = getattr(self_cmd.protocol, "_script_depth", 0)
+                if depth >= max_depth:
+                    self_cmd.errorWrite(
+                        f"-bash: {path}: too many levels of recursion\n"
+                    )
+                    return
+
+                try:
+                    contents = self_cmd.fs.file_contents(path)
+                except Exception:
+                    self_cmd.errorWrite(
+                        f"-bash: {path}: No such file or directory\n"
+                    )
+                    return
+
+                # Null bytes indicate actual binary — reject like real bash
+                if b"\x00" in contents:
+                    self_cmd.errorWrite(
+                        f"-bash: {path}: cannot execute binary file: Exec format error\n"
+                    )
+                    return
+
+                lines = contents.decode("utf-8", errors="replace").splitlines()
+
+                if not lines:
+                    return
+
+                # Strip shebang line if it's a shell shebang
+                if shebang_re.match(lines[0]):
+                    lines = lines[1:]
+
+                # Strip comment-only and blank lines
+                lines = [
+                    line
+                    for line in lines
+                    if line.strip() and not line.strip().startswith("#")
+                ]
+
+                if not lines:
+                    return
+
+                self_cmd.protocol._script_depth = depth + 1
+                try:
+                    shell = honeypot.HoneyPotShell(
+                        self_cmd.protocol, interactive=False
+                    )
+                    self_cmd.protocol.cmdstack.append(shell)
+                    shell.lineReceived("; ".join(lines))
+                    self_cmd.protocol.cmdstack.pop()
+                finally:
+                    self_cmd.protocol._script_depth = depth
+
+        return Command_scriptcmd
 
     def isCommand(self, cmd):
         """
@@ -166,14 +243,27 @@ class HoneyPotBaseProtocol(insults.TerminalProtocol, TimeoutMixin):
                     path = i
                     break
 
-        txt = os.path.normpath(
-            "{}/txtcmds/{}".format(CowrieConfig.get("honeypot", "data_path"), path)
-        )
-        if os.path.exists(txt) and os.path.isfile(txt):
-            return self.txtcmd(txt)
+        if path is None:
+            return None
+
+        relpath = path.lstrip("/")
+        txtcmds_path = CowrieConfig.get("honeypot", "txtcmds_path", fallback="")
+        if txtcmds_path:
+            operator_path = Path(txtcmds_path) / relpath
+            if operator_path.is_file():
+                return self.txtcmd(operator_path.read_bytes())
+
+        try:
+            binary_data = read_data_bytes("txtcmds", *relpath.split("/"))
+            return self.txtcmd(binary_data)
+        except FileNotFoundError:
+            pass
 
         if path in self.commands:
             return self.commands[path]
+
+        if self.fs.isfile(path):
+            return self.scriptcmd(path)
 
         log.msg(f"Can't find command {cmd}")
         return None

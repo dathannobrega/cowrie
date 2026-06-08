@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2019-2026 Michel Oosterhof <michel@oosterhof.net>
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 """
 Cowrie Crashreport
 
@@ -8,11 +12,9 @@ to avoid circular calls
 
 from __future__ import annotations
 
-
 import json
 
 import treq
-
 from twisted.internet import defer
 from twisted.logger._levels import LogLevel
 from twisted.python import log
@@ -71,6 +73,7 @@ class Output(cowrie.core.output.Output):
                     b"Content-Type": [b"application/json"],
                     b"User-Agent": [COWRIE_USER_AGENT],
                 },
+                allow_redirects=False,
             )
             content = yield r.text()
             if self.debug:
