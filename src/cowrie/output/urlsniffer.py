@@ -1,23 +1,32 @@
 from __future__ import annotations
 
+import base64
 import re
 import socket
-import base64
-from datetime import datetime
-from twisted.internet import task
+from datetime import datetime, timezone
+
+from twisted.internet import task, threads
+from twisted.python import log
 
 import cowrie.core.output
 from cowrie.core.config import CowrieConfig
 
 try:
     import mysql.connector
-except Exception:  # pragma: no cover - optional dependency
+except ImportError:  # pragma: no cover - optional dependency
     mysql = None
 
 class Output(cowrie.core.output.Output):
     """Output plugin that stores and checks URLs seen in Cowrie events."""
 
     def start(self):
+        if mysql is None:
+            log.msg(
+                "urlsniffer: optional dependency 'mysql-connector-python' "
+                "is not installed; plugin disabled"
+            )
+            return
+
         host = CowrieConfig.get("output_mysql", "host")
         database = CowrieConfig.get("output_mysql", "database")
         username = CowrieConfig.get("output_mysql", "username")
@@ -52,7 +61,7 @@ class Output(cowrie.core.output.Output):
     def stop(self):
         if hasattr(self, "_lc") and self._lc.running:
             self._lc.stop()
-        if self.conn.is_connected():
+        if hasattr(self, "conn") and self.conn.is_connected():
             self.cursor.close()
             self.conn.close()
 
@@ -63,6 +72,11 @@ class Output(cowrie.core.output.Output):
     def _execute(self, query: str, params: tuple):
         self.cursor.execute(query, params)
         self.conn.commit()
+
+    @staticmethod
+    def _utcnow() -> datetime:
+        """UTC 'now' as a naive datetime, suitable for MySQL DATETIME columns."""
+        return datetime.now(timezone.utc).replace(tzinfo=None)
 
     def write(self, event: dict):
         urls = set()
@@ -122,7 +136,7 @@ class Output(cowrie.core.output.Output):
         return {u.rstrip(";") for u in re.findall(pattern, text)}
 
     def _insert_or_update(self, url: str) -> None:
-        now = datetime.utcnow()
+        now = self._utcnow()
         if url not in self.known_urls:
             self._execute(
                 "INSERT INTO urls (url, first_view, last_view) VALUES (%s, %s, %s)",
@@ -133,17 +147,28 @@ class Output(cowrie.core.output.Output):
             self._execute(
                 "UPDATE urls SET last_view=%s WHERE url=%s", (now, url)
             )
-        if self._check_connectivity(url):
-            self._execute("UPDATE urls SET last_view=%s WHERE url=%s", (now, url))
+        # The connectivity probe opens a socket; run it off the reactor thread so
+        # a slow or unreachable host cannot block Cowrie. The DB write happens
+        # back on the reactor thread, in the callback.
+        self._check_connectivity_async(url)
 
     def _verify_existing_urls(self) -> None:
-        now = datetime.utcnow()
         for (url,) in self._fetchall("SELECT url FROM urls"):
-            if self._check_connectivity(url):
+            self._check_connectivity_async(url)
+
+    def _check_connectivity_async(self, url: str) -> None:
+        """Probe ``url`` in a worker thread; update last_view if it responds."""
+
+        def _on_result(alive: bool) -> None:
+            if alive:
                 self._execute(
                     "UPDATE urls SET last_view=%s WHERE url=%s",
-                    (now, url),
+                    (self._utcnow(), url),
                 )
+
+        d = threads.deferToThread(self._check_connectivity, url)
+        d.addCallback(_on_result)
+        d.addErrback(lambda failure: None)
 
     def _check_connectivity(self, url: str) -> bool:
         pattern = r"https?://((?:\d{1,3}\.){3}\d{1,3}|(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,})(?::(\d+))?"
